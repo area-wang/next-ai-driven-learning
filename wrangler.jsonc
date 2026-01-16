@@ -15,5 +15,18 @@
 	"observability": {
 		"enabled": true
 	},
-	"upload_source_maps": true
+	"upload_source_maps": true,
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "ai-learning-platform",
+			"database_id": "your-database-id"
+		}
+	],
+	"r2_buckets": [
+		{
+			"binding": "STORAGE",
+			"bucket_name": "ai-learning-platform-files"
+		}
+	]
 }
