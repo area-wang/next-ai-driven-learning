@@ -278,6 +278,25 @@ AI驱动学习平台是一个综合性的在线学习系统，利用人工智能
 7. WHEN 用户长时间未操作 THEN THE System SHALL 自动登出以保护隐私
 8. THE System SHALL 允许用户导出个人学习数据
 
+### 需求 15: LLM 模型选择与管理
+
+**用户故事:** 作为用户，我希望能够选择不同的 AI 模型提供商和具体模型，以便根据我的需求和偏好使用最合适的 AI 服务。
+
+#### 验收标准
+
+1. THE System SHALL 支持多个 LLM 提供商（OpenAI/ChatGPT、DeepSeek、Gemini、Claude、Cloudflare AI）
+2. WHEN 用户访问设置页面 THEN THE System SHALL 显示可用的 AI 提供商列表
+3. WHEN 用户选择提供商 THEN THE System SHALL 显示该提供商支持的模型列表
+4. THE System SHALL 为每个提供商显示模型特点（速度、成本、能力）
+5. WHEN 用户选择模型 THEN THE System SHALL 保存用户偏好到本地存储和数据库
+6. WHEN 用户使用 AI 功能 THEN THE System SHALL 使用用户选择的模型
+7. THE System SHALL 在 AI 对话界面显示当前使用的提供商和模型
+8. THE System SHALL 允许用户在对话界面快速切换模型
+9. IF 用户未配置 API Key THEN THE System SHALL 提示用户配置或使用默认的 Cloudflare AI
+10. THE System SHALL 验证 API Key 的有效性
+11. WHEN API 调用失败 THEN THE System SHALL 显示错误信息并建议切换模型
+12. THE System SHALL 记录每个模型的使用次数和成功率
+
 ## 待办需求（第二阶段）
 
 ### 需求 15: 学习进度追踪

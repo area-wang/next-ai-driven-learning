@@ -5,6 +5,7 @@ import GitHub from "next-auth/providers/github"
 import { verifyPassword } from "./password"
 
 export const authConfig: NextAuthConfig = {
+  secret: process.env.AUTH_SECRET,
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID,
@@ -25,20 +26,34 @@ export const authConfig: NextAuthConfig = {
           return null
         }
 
-        // 这里需要从数据库获取用户
-        // 由于 Cloudflare D1 的特殊性，实际验证逻辑在 API 路由中处理
-        // 这里只做基本的凭证检查
         const email = credentials.email as string
         const password = credentials.password as string
 
-        if (!email || !password) {
-          return null
-        }
+        try {
+          // 调用登录 API 验证用户
+          const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/auth/login`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ email, password }),
+          })
 
-        // 返回基本用户信息，实际验证在 signIn 回调中处理
-        return {
-          id: email,
-          email: email,
+          if (!response.ok) {
+            return null
+          }
+
+          const data = await response.json() as { user: { id: string; email: string; name: string | null; avatar: string | null } }
+          
+          return {
+            id: data.user.id,
+            email: data.user.email,
+            name: data.user.name,
+            image: data.user.avatar,
+          }
+        } catch (error) {
+          console.error('Authorization error:', error)
+          return null
         }
       },
     }),

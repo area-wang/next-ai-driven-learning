@@ -20,6 +20,8 @@ A live public deployment of this template is available at [https://next-starter-
 
 ## Getting Started
 
+### 1. 安装依赖
+
 First, run:
 
 ```bash
@@ -31,6 +33,46 @@ pnpm install
 # or
 bun install
 ```
+
+### 2. 配置环境变量
+
+复制环境变量示例文件并填入实际值：
+
+```bash
+# 复制 Next.js 环境变量文件
+cp .env.local.example .env.local
+
+# 复制 Cloudflare Workers 环境变量文件
+cp .dev.vars.example .dev.vars
+```
+
+然后编辑这两个文件，至少需要设置：
+
+- `AUTH_SECRET`: NextAuth 密钥（使用 `openssl rand -base64 32` 生成）
+
+可选配置（如果需要第三方登录）：
+- Google OAuth: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
+- GitHub OAuth: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`
+
+可选配置（如果需要文件上传）：
+- Cloudflare R2: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL`
+
+### 3. 初始化数据库
+
+创建并初始化本地 D1 数据库：
+
+```bash
+# 生成迁移文件（如果还没有）
+npm run db:generate
+
+# 运行本地数据库迁移
+npm run db:migrate:local
+
+# （可选）运行远程数据库迁移
+npm run db:migrate:remote
+```
+
+### 4. 启动开发服务器
 
 Then run the development server (using the package manager of your choice):
 

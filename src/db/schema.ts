@@ -132,6 +132,17 @@ export const files = sqliteTable('files', {
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
 })
 
+// 草稿表
+export const drafts = sqliteTable('drafts', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  userId: text('user_id').notNull().references(() => users.id),
+  title: text('title').notNull(),
+  content: text('content').notNull(),
+  type: text('type').default('document'), // 'document' | 'note' | 'explanation'
+  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).$onUpdate(() => new Date()),
+})
+
 // AI对话历史表
 export const chatHistory = sqliteTable('chat_history', {
   id: text('id').primaryKey().$defaultFn(() => createId()),
@@ -179,6 +190,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   notes: many(notes),
   feynmanExplanations: many(feynmanExplanations),
   files: many(files),
+  drafts: many(drafts),
   chatHistory: many(chatHistory),
   accounts: many(accounts),
   sessions: many(sessions),

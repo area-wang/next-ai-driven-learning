@@ -7,7 +7,10 @@
 	"name": "next-ai-driven-learning",
 	"main": ".open-next/worker.js",
 	"compatibility_date": "2025-10-08",
-	"compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+	"compatibility_flags": [
+		"nodejs_compat",
+		"global_fetch_strictly_public"
+	],
 	"assets": {
 		"binding": "ASSETS",
 		"directory": ".open-next/assets"
@@ -20,7 +23,8 @@
 		{
 			"binding": "DB",
 			"database_name": "ai-learning-platform",
-			"database_id": "your-database-id"
+			"database_id": "fd40c8a0-8e6f-4a09-bf16-8b6e24648720",
+			"migrations_dir": "drizzle"
 		}
 	],
 	"r2_buckets": [

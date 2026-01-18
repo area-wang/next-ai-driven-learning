@@ -36,13 +36,19 @@ export function LoginForm({ className, callbackUrl = "/dashboard" }: LoginFormPr
         redirect: false,
       })
 
+      console.log("SignIn result:", result)
+
       if (result?.error) {
         setError("邮箱或密码错误")
-      } else {
+      } else if (result?.ok) {
+        // 登录成功，跳转到目标页面
         router.push(callbackUrl)
         router.refresh()
+      } else {
+        setError("登录失败，请稍后重试")
       }
-    } catch {
+    } catch (err) {
+      console.error("Login error:", err)
       setError("登录失败，请稍后重试")
     } finally {
       setIsLoading(false)

@@ -19,9 +19,10 @@ import {
   Redo,
   Link as LinkIcon,
   Image as ImageIcon,
-  Youtube,
+  Video,
   Table,
   Code2,
+  Sigma,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -31,6 +32,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { VideoEmbedDialog } from "./video-embed-dialog"
 
 interface EditorToolbarProps {
   editor: Editor
@@ -82,11 +84,49 @@ function ToolbarDivider() {
 }
 
 export function EditorToolbar({ editor }: EditorToolbarProps) {
+  const [isVideoDialogOpen, setIsVideoDialogOpen] = React.useState(false)
+
   const addImage = React.useCallback(() => {
-    const url = window.prompt("输入图片URL:")
-    if (url) {
-      editor.chain().focus().setImage({ src: url }).run()
+    // 创建文件选择器
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (!file) return
+
+      try {
+        // 上传图片
+        const formData = new FormData()
+        formData.append('file', file)
+
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        })
+
+        if (!response.ok) {
+          throw new Error('上传失败')
+        }
+
+        const data = await response.json() as { url: string }
+
+        // 插入可调整大小的图片
+        editor.commands.insertContent({
+          type: 'resizableImage',
+          attrs: {
+            src: data.url,
+            alt: file.name,
+            width: null,
+            align: 'left',
+          },
+        })
+      } catch (error) {
+        console.error('图片上传失败:', error)
+        alert('图片上传失败，请重试')
+      }
     }
+    input.click()
   }, [editor])
 
   const addLink = React.useCallback(() => {
@@ -103,10 +143,11 @@ export function EditorToolbar({ editor }: EditorToolbarProps) {
     editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run()
   }, [editor])
 
-  const addYoutube = React.useCallback(() => {
-    const url = window.prompt("输入YouTube视频URL:")
-    if (url) {
+  const handleVideoEmbed = React.useCallback((url: string, type: 'youtube' | 'vimeo') => {
+    if (type === 'youtube') {
       editor.commands.setYoutubeVideo({ src: url })
+    } else if (type === 'vimeo') {
+      editor.commands.setVimeoVideo({ src: url })
     }
   }, [editor])
 
@@ -114,8 +155,23 @@ export function EditorToolbar({ editor }: EditorToolbarProps) {
     editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
   }, [editor])
 
+  const addInlineMath = React.useCallback(() => {
+    const latex = window.prompt("输入 LaTeX 公式（行内）:")
+    if (latex) {
+      editor.chain().focus().setMath({ latex, display: false }).run()
+    }
+  }, [editor])
+
+  const addBlockMath = React.useCallback(() => {
+    const latex = window.prompt("输入 LaTeX 公式（块级）:")
+    if (latex) {
+      editor.chain().focus().setBlockMath({ latex }).run()
+    }
+  }, [editor])
+
   return (
-    <div className="flex flex-wrap items-center gap-0.5 p-2 border-b border-gray-200 bg-gray-50/50">
+    <>
+      <div className="flex flex-wrap items-center gap-0.5 p-2 border-b border-gray-200 bg-gray-50/50">
       {/* 撤销/重做 */}
       <ToolbarButton
         onClick={() => editor.chain().focus().undo().run()}
@@ -247,12 +303,30 @@ export function EditorToolbar({ editor }: EditorToolbarProps) {
       <ToolbarButton onClick={addImage} tooltip="图片">
         <ImageIcon className="w-4 h-4" />
       </ToolbarButton>
-      <ToolbarButton onClick={addYoutube} tooltip="YouTube视频">
-        <Youtube className="w-4 h-4" />
+      <ToolbarButton onClick={() => setIsVideoDialogOpen(true)} tooltip="嵌入视频">
+        <Video className="w-4 h-4" />
       </ToolbarButton>
       <ToolbarButton onClick={insertTable} tooltip="表格">
         <Table className="w-4 h-4" />
       </ToolbarButton>
+
+      <ToolbarDivider />
+
+      {/* 数学公式 */}
+      <ToolbarButton onClick={addInlineMath} tooltip="行内公式" aria-label="插入行内数学公式">
+        <Sigma className="w-4 h-4" />
+      </ToolbarButton>
+      <ToolbarButton onClick={addBlockMath} tooltip="块级公式" aria-label="插入块级数学公式">
+        <Sigma className="w-4 h-4 font-bold" />
+      </ToolbarButton>
     </div>
+
+    {/* 视频嵌入对话框 */}
+    <VideoEmbedDialog
+      isOpen={isVideoDialogOpen}
+      onClose={() => setIsVideoDialogOpen(false)}
+      onEmbed={handleVideoEmbed}
+    />
+  </>
   )
 }

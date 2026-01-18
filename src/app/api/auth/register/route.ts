@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { hashPassword, validatePasswordStrength } from "@/lib/auth/password"
-import { createDbClient } from "@/db/client"
+import { getDbClient } from "@/lib/db-connection"
 import { users } from "@/db/schema"
 import { eq } from "drizzle-orm"
 
@@ -36,15 +36,16 @@ export async function POST(request: NextRequest) {
     }
 
     // 获取数据库连接
-    const env = (request as unknown as { env: { DB: D1Database } }).env
-    if (!env?.DB) {
+    const db = getDbClient(request)
+    if (!db) {
       return NextResponse.json(
-        { error: "数据库连接失败" },
+        { 
+          error: "数据库连接失败",
+          hint: "请确保使用 'npm run dev' 启动开发服务器，并且已经初始化数据库（npm run db:migrate:local）"
+        },
         { status: 500 }
       )
     }
-
-    const db = createDbClient(env.DB)
 
     // 检查邮箱是否已存在
     const existingUser = await db

@@ -14,16 +14,23 @@
 	"dependencies": {
 		"@auth/drizzle-adapter": "^1.11.1",
 		"@opennextjs/cloudflare": "1.14.0",
+		"@tippyjs/react": "^4.2.6",
+		"@tiptap/extension-bubble-menu": "^3.15.3",
 		"@tiptap/extension-code-block-lowlight": "^3.15.3",
+		"@tiptap/extension-color": "^3.15.3",
+		"@tiptap/extension-highlight": "^3.15.3",
 		"@tiptap/extension-image": "^3.15.3",
 		"@tiptap/extension-link": "^3.15.3",
 		"@tiptap/extension-placeholder": "^3.15.3",
 		"@tiptap/extension-table": "^3.15.3",
 		"@tiptap/extension-task-item": "^3.15.3",
 		"@tiptap/extension-task-list": "^3.15.3",
+		"@tiptap/extension-text-align": "^3.15.3",
+		"@tiptap/extension-text-style": "^3.15.3",
 		"@tiptap/extension-youtube": "^3.15.3",
 		"@tiptap/react": "^3.15.3",
 		"@tiptap/starter-kit": "^3.15.3",
+		"@tiptap/suggestion": "^3.15.3",
 		"@types/bcryptjs": "^2.4.6",
 		"@types/katex": "^0.16.8",
 		"bcryptjs": "^3.0.3",
@@ -37,7 +44,8 @@
 		"next-auth": "^5.0.0-beta.30",
 		"react": "19.2.1",
 		"react-dom": "19.2.1",
-		"tailwind-merge": "^3.4.0"
+		"tailwind-merge": "^3.4.0",
+		"tippy.js": "^6.3.7"
 	},
 	"devDependencies": {
 		"@eslint/eslintrc": "3",
@@ -59,8 +67,12 @@
 		"check": "npm run build && tsc",
 		"deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
 		"dev": "next dev",
+		"dev:wrangler": "wrangler dev --port 3000",
 		"lint": "next lint",
 		"preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-		"start": "next start"
+		"start": "next start",
+		"db:generate": "drizzle-kit generate",
+		"db:migrate:local": "wrangler d1 execute ai-learning-platform --local --file=./drizzle/0000_young_richard_fisk.sql",
+		"db:migrate:remote": "wrangler d1 execute ai-learning-platform --remote --file=./drizzle/0000_young_richard_fisk.sql"
 	}
 }
