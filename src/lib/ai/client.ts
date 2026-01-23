@@ -42,12 +42,23 @@ export class OpenAIClient implements AIClient {
     const { messages, temperature = 0.7, maxTokens = 2000 } = options
 
     try {
+      // 构建请求头对象
+      const headersObj: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.apiKey}`,
+      }
+
+      // 如果是 OpenRouter API，添加必要的请求头
+      if (this.baseURL.includes('openrouter.ai')) {
+        headersObj['HTTP-Referer'] = 'https://ai-learning-platform.com'
+        headersObj['X-Title'] = 'AI Learning Platform'
+      }
+
+      // 使用 fetch 的 headers 选项，不使用 Headers 构造函数
+      // 这样可以避免浏览器自动添加某些请求头
       const response = await fetch(`${this.baseURL}/chat/completions`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`,
-        },
+        headers: headersObj,
         body: JSON.stringify({
           model: this.model,
           messages,
@@ -57,7 +68,9 @@ export class OpenAIClient implements AIClient {
       })
 
       if (!response.ok) {
-        throw new Error(`OpenAI API error: ${response.statusText}`)
+        const errorData = await response.json().catch(() => ({})) as { error?: { message?: string } }
+        const errorMessage = errorData.error?.message || response.statusText
+        throw new Error(`OpenAI API error: ${errorMessage}`)
       }
 
       const data = await response.json() as {
@@ -77,12 +90,21 @@ export class OpenAIClient implements AIClient {
   async chatStream(options: AIStreamOptions): Promise<ReadableStream<string>> {
     const { messages, temperature = 0.7, maxTokens = 2000 } = options
 
+    // 构建请求头对象
+    const headersObj: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${this.apiKey}`,
+    }
+
+    // 如果是 OpenRouter API，添加必要的请求头
+    if (this.baseURL.includes('openrouter.ai')) {
+      headersObj['HTTP-Referer'] = 'https://ai-learning-platform.com'
+      headersObj['X-Title'] = 'AI Learning Platform'
+    }
+
     const response = await fetch(`${this.baseURL}/chat/completions`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`,
-      },
+      headers: headersObj,
       body: JSON.stringify({
         model: this.model,
         messages,
@@ -93,7 +115,9 @@ export class OpenAIClient implements AIClient {
     })
 
     if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.statusText}`)
+      const errorData = await response.json().catch(() => ({})) as { error?: { message?: string } }
+      const errorMessage = errorData.error?.message || response.statusText
+      throw new Error(`OpenAI API error: ${errorMessage}`)
     }
 
     const reader = response.body?.getReader()
@@ -506,17 +530,22 @@ export function createAIClient(config: {
   provider: AIProvider
   apiKey?: string
   model?: string
+  baseURL?: string
   ai?: any
 }): AIClient {
-  const { provider, apiKey, model, ai } = config
+  const { provider, apiKey, model, baseURL, ai } = config
 
   switch (provider) {
     case 'openai':
       if (!apiKey) throw new Error('OpenAI API key is required')
-      return new OpenAIClient(apiKey, model)
+      return new OpenAIClient(apiKey, model, baseURL)
     
     case 'deepseek':
       if (!apiKey) throw new Error('DeepSeek API key is required')
+      // DeepSeek 使用自定义 baseURL 或默认的 DeepSeek API
+      if (baseURL) {
+        return new OpenAIClient(apiKey, model, baseURL)
+      }
       return new DeepSeekClient(apiKey, model)
     
     case 'gemini':

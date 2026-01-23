@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDbClient } from '@/lib/db-connection'
 import { learningPlans } from '@/db/schema'
-import { createAIClient, type AIProvider } from '@/lib/ai/client'
+import { createAIClientFromRequest } from '@/lib/ai/config-client'
 import { generateLearningPlanPrompt, type LearningPlanInput } from '@/lib/ai/prompts'
 
 interface GenerateRequest {
@@ -14,8 +14,6 @@ interface GenerateRequest {
   goal?: string
   level: 'beginner' | 'intermediate' | 'advanced'
   duration?: string
-  provider?: AIProvider
-  model?: string
   userId?: string
 }
 
@@ -34,7 +32,7 @@ interface LearningPlanResponse {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as GenerateRequest
-    const { topic, goal, level, duration, provider = 'openai', model, userId } = body
+    const { topic, goal, level, duration, userId } = body
 
     if (!topic) {
       return NextResponse.json(
@@ -43,39 +41,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 获取 API Key
-    let apiKey: string | undefined
-    const clientApiKey = request.headers.get('x-api-key')
-    
-    switch (provider) {
-      case 'openai':
-        apiKey = clientApiKey || process.env.OPENAI_API_KEY
-        break
-      case 'deepseek':
-        apiKey = clientApiKey || process.env.DEEPSEEK_API_KEY
-        break
-      case 'gemini':
-        apiKey = clientApiKey || process.env.GEMINI_API_KEY
-        break
-      case 'claude':
-        apiKey = clientApiKey || process.env.CLAUDE_API_KEY
-        break
-      case 'cloudflare':
-        break
-      default:
-        return NextResponse.json(
-          { error: `不支持的提供商: ${provider}` },
-          { status: 400 }
-        )
-    }
-
-    // 创建 AI 客户端
-    const aiClient = createAIClient({
-      provider,
-      apiKey,
-      model,
-      ai: (request as any).env?.AI,
-    })
+    // 从配置创建 AI 客户端
+    const aiClient = createAIClientFromRequest(request)
 
     // 生成提示词
     const input: LearningPlanInput = {

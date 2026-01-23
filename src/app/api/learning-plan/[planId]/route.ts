@@ -74,6 +74,7 @@ export async function GET(
           description: outline.description,
           content: contentsMap[outline.id]?.content || '',
           estimatedTime: outline.estimatedTime,
+          isTestDocument: outline.isTestDocument || false,  // 添加测试题文档标志
           children: buildTree(outline.id),
         }))
     }

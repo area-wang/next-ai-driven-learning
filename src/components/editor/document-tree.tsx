@@ -22,6 +22,7 @@ export interface DocumentNode {
   title: string
   children?: DocumentNode[]
   isExpanded?: boolean
+  isTestDocument?: boolean  // 标记是否为测试题文档
 }
 
 interface DocumentTreeProps {
@@ -37,7 +38,8 @@ interface DocumentTreeProps {
 interface TreeNodeProps {
   node: DocumentNode
   level: number
-  isActive: boolean
+  activeDocId?: string
+  highlightedDocId?: string  // 新增：实际要高亮的文档ID
   onSelect: (docId: string) => void
   onToggle: (docId: string) => void
   onAdd?: (parentId: string) => void
@@ -48,7 +50,8 @@ interface TreeNodeProps {
 function TreeNode({
   node,
   level,
-  isActive,
+  activeDocId,
+  highlightedDocId,
   onSelect,
   onToggle,
   onAdd,
@@ -57,12 +60,13 @@ function TreeNode({
 }: TreeNodeProps) {
   const [isHovered, setIsHovered] = React.useState(false)
   const hasChildren = node.children && node.children.length > 0
+  const isActive = node.id === highlightedDocId  // 使用 highlightedDocId 而不是 activeDocId
 
   return (
     <div>
       <div
         className={cn(
-          "group flex items-center gap-1 px-2 py-1.5 rounded-lg transition-all duration-200 cursor-pointer",
+          "group flex items-center gap-1 px-2 py-1.5 rounded-lg cursor-pointer transition-colors",
           isActive
             ? "bg-[var(--color-primary)]/10 text-[var(--color-primary)]"
             : "hover:bg-gray-100 text-[var(--color-text)]"
@@ -155,7 +159,8 @@ function TreeNode({
               key={child.id}
               node={child}
               level={level + 1}
-              isActive={isActive}
+              activeDocId={activeDocId}
+              highlightedDocId={highlightedDocId}
               onSelect={onSelect}
               onToggle={onToggle}
               onAdd={onAdd}
@@ -181,6 +186,7 @@ export function DocumentTree({
   const [expandedDocs, setExpandedDocs] = React.useState<Set<string>>(
     new Set()
   )
+  const [isCollapsed, setIsCollapsed] = React.useState(false)
 
   const handleToggle = React.useCallback((docId: string) => {
     setExpandedDocs((prev) => {
@@ -193,6 +199,55 @@ export function DocumentTree({
       return next
     })
   }, [])
+
+  // 计算应该高亮的文档ID
+  // 如果当前文档不可见（任何祖先节点收起），则高亮最近的可见祖先节点
+  const highlightedDocId = React.useMemo(() => {
+    if (!activeDocId) return undefined
+
+    // 查找文档路径（从根到目标文档的所有节点ID）
+    const findPath = (nodes: DocumentNode[], targetId: string, path: string[] = []): string[] | null => {
+      for (const node of nodes) {
+        const currentPath = [...path, node.id]
+        
+        if (node.id === targetId) {
+          return currentPath
+        }
+        
+        if (node.children) {
+          const result = findPath(node.children, targetId, currentPath)
+          if (result) return result
+        }
+      }
+      return null
+    }
+
+    const path = findPath(documents, activeDocId)
+    if (!path) return activeDocId
+
+    // 从后往前查找第一个可见的节点
+    // 一个节点可见的条件是：它的所有祖先节点都是展开的
+    for (let i = path.length - 1; i >= 0; i--) {
+      const nodeId = path[i]
+      
+      // 检查该节点是否可见（所有祖先都展开）
+      let isVisible = true
+      for (let j = 0; j < i; j++) {
+        if (!expandedDocs.has(path[j])) {
+          isVisible = false
+          break
+        }
+      }
+      
+      if (isVisible) {
+        // 找到第一个可见的节点
+        return nodeId
+      }
+    }
+
+    // 如果没有找到可见节点（理论上不应该发生），返回第一个节点
+    return path[0]
+  }, [activeDocId, documents, expandedDocs])
 
   const documentsWithExpanded = React.useMemo(() => {
     const addExpanded = (nodes: DocumentNode[]): DocumentNode[] => {
@@ -208,57 +263,80 @@ export function DocumentTree({
   return (
     <div
       className={cn(
-        "w-64 border-r border-gray-200 bg-white/50 backdrop-blur-sm flex flex-col",
+        "border-r border-gray-200 bg-white/50 backdrop-blur-sm flex flex-col transition-all duration-300",
+        isCollapsed ? "w-12" : "w-64",
         className
       )}
     >
       {/* 头部 */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-        <h2 className="font-semibold text-[var(--color-text)]">文档</h2>
-        {onDocumentAdd && (
-          <button
-            type="button"
-            onClick={() => onDocumentAdd()}
-            className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
-            aria-label="新建文档"
-          >
-            <Plus className="w-4 h-4 text-[var(--color-primary)]" />
-          </button>
-        )}
-      </div>
-
-      {/* 文档树 */}
-      <div className="flex-1 overflow-y-auto p-2">
-        {documentsWithExpanded.length === 0 ? (
-          <div className="px-4 py-8 text-center">
-            <FileText className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-            <p className="text-sm text-gray-500 mb-3">还没有文档</p>
+        {!isCollapsed && (
+          <>
+            <h2 className="font-semibold text-[var(--color-text)]">文档</h2>
             {onDocumentAdd && (
               <button
                 type="button"
                 onClick={() => onDocumentAdd()}
-                className="px-4 py-2 rounded-lg bg-[var(--color-primary)] text-white text-sm font-medium hover:bg-[var(--color-primary-dark)] transition-colors cursor-pointer"
+                className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                aria-label="新建文档"
               >
-                创建第一个文档
+                <Plus className="w-4 h-4 text-[var(--color-primary)]" />
               </button>
             )}
-          </div>
-        ) : (
-          documentsWithExpanded.map((doc) => (
-            <TreeNode
-              key={doc.id}
-              node={doc}
-              level={0}
-              isActive={doc.id === activeDocId}
-              onSelect={onDocumentSelect}
-              onToggle={handleToggle}
-              onAdd={onDocumentAdd}
-              onDelete={onDocumentDelete}
-              onAIGenerate={onAIGenerate}
-            />
-          ))
+          </>
         )}
+        <button
+          type="button"
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          className={cn(
+            "flex items-center justify-center w-7 h-7 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer",
+            isCollapsed && "mx-auto"
+          )}
+          aria-label={isCollapsed ? "展开文档树" : "收起文档树"}
+        >
+          {isCollapsed ? (
+            <ChevronRight className="w-4 h-4 text-[var(--color-text)]" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-[var(--color-text)]" />
+          )}
+        </button>
       </div>
+
+      {/* 文档树 */}
+      {!isCollapsed && (
+        <div className="flex-1 overflow-y-auto p-2">
+          {documentsWithExpanded.length === 0 ? (
+            <div className="px-4 py-8 text-center">
+              <FileText className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+              <p className="text-sm text-gray-500 mb-3">还没有文档</p>
+              {onDocumentAdd && (
+                <button
+                  type="button"
+                  onClick={() => onDocumentAdd()}
+                  className="px-4 py-2 rounded-lg bg-[var(--color-primary)] text-white text-sm font-medium hover:bg-[var(--color-primary-dark)] transition-colors cursor-pointer"
+                >
+                  创建第一个文档
+                </button>
+              )}
+            </div>
+          ) : (
+            documentsWithExpanded.map((doc) => (
+              <TreeNode
+                key={doc.id}
+                node={doc}
+                level={0}
+                activeDocId={activeDocId}
+                highlightedDocId={highlightedDocId}
+                onSelect={onDocumentSelect}
+                onToggle={handleToggle}
+                onAdd={onDocumentAdd}
+                onDelete={onDocumentDelete}
+                onAIGenerate={onAIGenerate}
+              />
+            ))
+          )}
+        </div>
+      )}
     </div>
   )
 }

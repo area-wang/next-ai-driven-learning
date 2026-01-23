@@ -214,7 +214,11 @@ export const slashCommandItems: SlashCommandItem[] = [
           })
         } catch (error) {
           console.error('图片上传失败:', error)
-          alert('图片上传失败，请重试')
+          // 触发 toast 通知
+          const event = new CustomEvent("showToast", {
+            detail: { type: 'error', message: '图片上传失败，请重试' },
+          })
+          document.dispatchEvent(event)
         }
       }
       input.click()
@@ -262,7 +266,11 @@ export const slashCommandItems: SlashCommandItem[] = [
           })
         } catch (error) {
           console.error('视频上传失败:', error)
-          alert('视频上传失败，请重试')
+          // 触发 toast 通知
+          const event = new CustomEvent("showToast", {
+            detail: { type: 'error', message: '视频上传失败，请重试' },
+          })
+          document.dispatchEvent(event)
         }
       }
       input.click()
@@ -309,6 +317,19 @@ export const slashCommandItems: SlashCommandItem[] = [
       }
     },
   },
+  {
+    title: "AI 生成",
+    description: "使用 AI 生成内容",
+    icon: "Sparkles",
+    command: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).run()
+      // 触发 AI 对话框
+      const event = new CustomEvent("openAIPrompt", {
+        detail: { editor, range },
+      })
+      document.dispatchEvent(event)
+    },
+  },
 ]
 
 // Suggestion 配置
@@ -347,7 +368,48 @@ export const slashCommandSuggestion: Partial<SuggestionOptions> = {
           interactive: true,
           trigger: "manual",
           placement: "bottom-start",
+          offset: [0, 8],
+          popperOptions: {
+            modifiers: [
+              {
+                name: 'flip',
+                enabled: true,
+                options: {
+                  padding: 8,
+                },
+              },
+              {
+                name: 'preventOverflow',
+                enabled: true,
+                options: {
+                  padding: 8,
+                },
+              },
+            ],
+          },
         })
+
+        // 自动滚动编辑器，确保菜单在视口可见区域
+        setTimeout(() => {
+          const editorContainer = document.querySelector('.ProseMirror')?.closest('.flex-1') as HTMLElement
+          if (editorContainer && props.clientRect) {
+            const rect = props.clientRect()
+            const containerRect = editorContainer.getBoundingClientRect()
+            const menuHeight = 320 // 估计菜单高度
+            const padding = 20
+
+            // 检查菜单是否超出下边界
+            if (rect.top + menuHeight + padding > window.innerHeight) {
+              const scrollTop = editorContainer.scrollTop
+              const targetScrollTop = scrollTop + (rect.top - containerRect.top) - 100
+              
+              editorContainer.scrollTo({
+                top: Math.max(0, targetScrollTop),
+                behavior: 'smooth',
+              })
+            }
+          }
+        }, 50)
       },
 
       onUpdate(props: any) {

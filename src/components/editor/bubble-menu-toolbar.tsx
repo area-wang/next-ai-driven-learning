@@ -54,6 +54,7 @@ export function BubbleMenuToolbar({ editor }: BubbleMenuToolbarProps) {
   const [position, setPosition] = React.useState({ top: 0, left: 0 })
   const menuRef = React.useRef<HTMLDivElement>(null)
   const closeTimeoutRef = React.useRef<NodeJS.Timeout | null>(null)
+  const showDelayTimeoutRef = React.useRef<NodeJS.Timeout | null>(null)
 
   // 文本格式工具
   const textFormatTools: ToolItem[] = [
@@ -240,6 +241,9 @@ export function BubbleMenuToolbar({ editor }: BubbleMenuToolbarProps) {
       if (closeTimeoutRef.current) {
         clearTimeout(closeTimeoutRef.current)
       }
+      if (showDelayTimeoutRef.current) {
+        clearTimeout(showDelayTimeoutRef.current)
+      }
     }
   }, [])
 
@@ -320,6 +324,12 @@ export function BubbleMenuToolbar({ editor }: BubbleMenuToolbarProps) {
       const { state, view } = editor
       const { from, to, empty } = state.selection
 
+      // 清除之前的延迟显示定时器
+      if (showDelayTimeoutRef.current) {
+        clearTimeout(showDelayTimeoutRef.current)
+        showDelayTimeoutRef.current = null
+      }
+
       // 严格规则：只要没有选中文本，就隐藏工具栏
       if (empty || from === to) {
         setIsVisible(false)
@@ -327,14 +337,96 @@ export function BubbleMenuToolbar({ editor }: BubbleMenuToolbarProps) {
         return
       }
 
-      // 如果有选中文本，显示菜单
+      // 额外检查：确保 DOM 中确实有选中的文本
+      const domSelection = window.getSelection()
+      if (!domSelection || domSelection.rangeCount === 0) {
+        setIsVisible(false)
+        setActiveCategory(null)
+        return
+      }
+
+      // 检查选中的文本是否为空（只有空白字符）
+      const selectedText = domSelection.toString().trim()
+      if (!selectedText || selectedText.length === 0) {
+        setIsVisible(false)
+        setActiveCategory(null)
+        return
+      }
+
+      // 检查选中的内容是否在 details/summary 元素内
+      try {
+        const $from = state.selection.$from
+        const $to = state.selection.$to
+        
+        // 检查选区的父节点是否是 details 或 summary
+        let node = $from.parent
+        let depth = $from.depth
+        
+        while (depth > 0) {
+          if (node.type.name === 'details' || node.type.name === 'summary') {
+            // 如果选中的内容在 details/summary 内，不显示工具栏
+            setIsVisible(false)
+            setActiveCategory(null)
+            return
+          }
+          depth--
+          node = $from.node(depth)
+        }
+        
+        // 同样检查 $to
+        node = $to.parent
+        depth = $to.depth
+        
+        while (depth > 0) {
+          if (node.type.name === 'details' || node.type.name === 'summary') {
+            setIsVisible(false)
+            setActiveCategory(null)
+            return
+          }
+          depth--
+          node = $to.node(depth)
+        }
+        
+        // 检查选区是否在按钮元素内
+        const domSelection = window.getSelection()
+        if (domSelection && domSelection.rangeCount > 0) {
+          const range = domSelection.getRangeAt(0)
+          const container = range.commonAncestorContainer
+          const element = container.nodeType === Node.ELEMENT_NODE 
+            ? container as Element 
+            : container.parentElement
+          
+          if (element) {
+            // 检查是否在按钮内或按钮本身
+            const button = element.closest('button[data-similar-question-btn="true"]')
+            if (button) {
+              setIsVisible(false)
+              setActiveCategory(null)
+              return
+            }
+          }
+        }
+      } catch (error) {
+        // 如果检查失败，继续正常流程
+        console.error('Error checking selection context:', error)
+      }
+
+      // 如果有选中文本，先计算位置，再延迟显示菜单（150ms）
       try {
         // 获取选中文本的位置
         const start = view.coordsAtPos(from)
         const end = view.coordsAtPos(to)
 
         if (!menuRef.current) {
-          setIsVisible(true)
+          // 如果菜单还没渲染，先更新位置再显示
+          const centerX = (start.left + end.left) / 2
+          const left = centerX - 150 // 使用估算宽度
+          const top = start.top - 60 // 使用估算高度
+          setPosition({ top, left })
+          
+          showDelayTimeoutRef.current = setTimeout(() => {
+            setIsVisible(true)
+          }, 150)
           return
         }
 
@@ -342,13 +434,16 @@ export function BubbleMenuToolbar({ editor }: BubbleMenuToolbarProps) {
         const menuHeight = menuRef.current.offsetHeight || 50
 
         // 计算菜单位置（在选中文本上方居中）
-        // 工具栏始终跟随选中文本，即使滚出视口
         const centerX = (start.left + end.left) / 2
         const left = centerX - menuWidth / 2
         const top = start.top - menuHeight - 10
 
+        // 先更新位置，再延迟显示
         setPosition({ top, left })
-        setIsVisible(true)
+        
+        showDelayTimeoutRef.current = setTimeout(() => {
+          setIsVisible(true)
+        }, 150)
       } catch (error) {
         console.error('Error calculating bubble menu position:', error)
       }
@@ -356,12 +451,43 @@ export function BubbleMenuToolbar({ editor }: BubbleMenuToolbarProps) {
 
     // 监听编辑器更新
     const handleUpdate = () => {
-      requestAnimationFrame(updatePosition)
+      // 使用 requestAnimationFrame 确保 DOM 更新完成后再计算位置
+      requestAnimationFrame(() => {
+        // 再次使用 requestAnimationFrame 确保选区完全稳定
+        requestAnimationFrame(updatePosition)
+      })
     }
 
-    // 监听滚动事件
+    // 监听滚动事件（滚动时立即更新，不需要延迟）
     const handleScroll = () => {
-      requestAnimationFrame(updatePosition)
+      // 只有在菜单已经显示时才更新位置
+      if (!isVisible) return
+      
+      const { state, view } = editor
+      const { from, to, empty } = state.selection
+
+      if (empty || from === to) {
+        setIsVisible(false)
+        return
+      }
+
+      try {
+        const start = view.coordsAtPos(from)
+        const end = view.coordsAtPos(to)
+
+        if (!menuRef.current) return
+
+        const menuWidth = menuRef.current.offsetWidth || 300
+        const menuHeight = menuRef.current.offsetHeight || 50
+
+        const centerX = (start.left + end.left) / 2
+        const left = centerX - menuWidth / 2
+        const top = start.top - menuHeight - 10
+
+        setPosition({ top, left })
+      } catch (error) {
+        console.error('Error calculating bubble menu position:', error)
+      }
     }
 
     // 立即执行一次，检查当前选区
@@ -390,7 +516,7 @@ export function BubbleMenuToolbar({ editor }: BubbleMenuToolbarProps) {
       }
       window.removeEventListener('scroll', handleScroll)
     }
-  }, [editor])
+  }, [editor, isVisible])
 
   if (!isVisible) return null
 
@@ -402,7 +528,6 @@ export function BubbleMenuToolbar({ editor }: BubbleMenuToolbarProps) {
         top: `${position.top}px`,
         left: `${position.left}px`,
         opacity: position.top === 0 && position.left === 0 ? 0 : 1,
-        transition: 'opacity 150ms',
       }}
     >
       {/* 分类工具 */}

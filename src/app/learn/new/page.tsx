@@ -10,9 +10,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Spinner } from "@/components/ui/spinner"
 import Link from "next/link"
-import { useAIConfig } from "@/hooks/use-ai-config"
-import { ModelSelector } from "@/components/ai/model-selector"
-import { ApiKeyConfig } from "@/components/ai/api-key-config"
+import { ConfiguredModelSelector } from "@/components/ai/configured-model-selector"
+import { getModelConfig } from "@/lib/ai/config"
+import { useToast } from "@/components/ui/toast-container"
 
 const levels = [
   { value: "beginner", label: "入门", description: "零基础开始学习" },
@@ -22,49 +22,55 @@ const levels = [
 
 export default function NewLearningPlanPage() {
   const router = useRouter()
-  const { config, getApiKey } = useAIConfig()
+  const toast = useToast()
   const [topic, setTopic] = React.useState("")
   const [goal, setGoal] = React.useState("")
   const [level, setLevel] = React.useState("beginner")
   const [isGenerating, setIsGenerating] = React.useState(false)
+  const [selectedModelId, setSelectedModelId] = React.useState<string | undefined>(undefined)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    if (!selectedModelId) {
+      toast.warning('请选择一个 AI 模型')
+      return
+    }
+
     setIsGenerating(true)
 
     try {
-      console.log('[Form] Current config:', {
-        provider: config.provider,
-        model: config.model,
+      // 获取选中模型的配置
+      const modelConfig = getModelConfig(selectedModelId)
+      if (!modelConfig) {
+        throw new Error('模型配置不存在')
+      }
+
+      console.log('[Form] Using model:', {
+        id: modelConfig.id,
+        name: modelConfig.name,
+        model: modelConfig.model,
       })
-
-      // 准备请求头
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      }
-
-      // 添加 API Key（如果有）
-      const apiKey = getApiKey(config.provider)
-      if (apiKey) {
-        headers['x-api-key'] = apiKey
-      }
 
       const requestBody = {
         topic,
         goal: goal || undefined,
         level,
-        provider: config.provider,
-        model: config.model,
+        modelId: selectedModelId, // 传递模型ID
       }
 
       console.log('[Form] Request body:', requestBody)
 
       // 调用 AI 生成 API
-      const response = await fetch('/api/learning-outline/generate', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(requestBody),
-      })
+      const { fetchWithModel } = await import('@/lib/ai/fetch-with-model')
+      const response = await fetchWithModel(
+        '/api/learning-outline/generate',
+        selectedModelId,
+        {
+          method: 'POST',
+          body: JSON.stringify(requestBody),
+        }
+      )
 
       if (!response.ok) {
         let errorMessage = 'AI 生成失败'
@@ -83,7 +89,7 @@ export default function NewLearningPlanPage() {
       
       if (data.saved && data.planId) {
         // 生成成功，显示成功消息
-        alert('学习计划生成成功!即将跳转到学习计划列表...')
+        toast.success('学习计划生成成功!即将跳转到学习计划列表...')
         // 延迟跳转,避免模块加载问题
         setTimeout(() => {
           window.location.href = '/learn'
@@ -93,7 +99,7 @@ export default function NewLearningPlanPage() {
       }
     } catch (error) {
       console.error('Generation failed:', error)
-      alert(error instanceof Error ? error.message : 'AI 生成失败')
+      toast.error(error instanceof Error ? error.message : 'AI 生成失败')
       setIsGenerating(false)
     }
   }
@@ -131,21 +137,14 @@ export default function NewLearningPlanPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {/* AI 模型选择 */}
-          <div className="mb-6">
-            <ModelSelector />
-            {/* 显示当前选择 */}
-            <div className="mt-2 text-sm text-[var(--color-text-secondary)]">
-              当前选择: {config.provider} - {config.model}
-            </div>
-          </div>
-
-          {/* API Key 配置 */}
-          <div className="mb-6">
-            <ApiKeyConfig />
-          </div>
-
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* AI 模型选择 */}
+            <ConfiguredModelSelector
+              value={selectedModelId}
+              onChange={setSelectedModelId}
+              label="AI 模型"
+            />
+
             {/* 学习主题 */}
             <div className="space-y-2">
               <Label htmlFor="topic" required>

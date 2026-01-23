@@ -9,6 +9,8 @@
 import * as React from "react"
 import { X, Sparkles, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { ConfiguredModelSelector } from "@/components/ai/configured-model-selector"
+import { useToast } from "@/components/ui/toast-container"
 
 interface AIGenerateDialogProps {
   isOpen: boolean
@@ -37,6 +39,7 @@ export interface GenerateParams {
   // 新增：用于章节内容生成
   additionalContext?: string
   currentDocId?: string
+  modelId?: string // 添加模型ID参数
 }
 
 export function AIGenerateDialog({
@@ -52,6 +55,8 @@ export function AIGenerateDialog({
   const [additionalContext, setAdditionalContext] = React.useState("")
   const [level, setLevel] = React.useState<'beginner' | 'intermediate' | 'advanced'>('beginner')
   const [isGenerating, setIsGenerating] = React.useState(false)
+  const [selectedModelId, setSelectedModelId] = React.useState<string | undefined>(undefined)
+  const toast = useToast()
 
   // 当对话框打开时，自动填充信息
   React.useEffect(() => {
@@ -73,7 +78,7 @@ export function AIGenerateDialog({
     e.preventDefault()
     
     if (!topic.trim()) {
-      alert("请输入学习主题")
+      toast.warning("请输入学习主题")
       return
     }
 
@@ -86,6 +91,7 @@ export function AIGenerateDialog({
         parentDocId,
         additionalContext: additionalContext.trim() || undefined,
         currentDocId: currentDoc?.id,
+        modelId: selectedModelId, // 传递选中的模型ID
       })
       
       // 重置表单
@@ -96,7 +102,7 @@ export function AIGenerateDialog({
       onClose()
     } catch (error) {
       console.error('Generation failed:', error)
-      alert(error instanceof Error ? error.message : 'AI 生成失败')
+      toast.error(error instanceof Error ? error.message : 'AI 生成失败')
     } finally {
       setIsGenerating(false)
     }
@@ -105,205 +111,159 @@ export function AIGenerateDialog({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4">
-      <div className="bg-gradient-to-br from-teal-50 via-cyan-50 to-blue-50 rounded-3xl shadow-[8px_8px_20px_rgba(0,0,0,0.15),-4px_-4px_12px_rgba(255,255,255,0.9)] w-full max-w-2xl max-h-[90vh] flex flex-col border-4 border-white/50">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] flex flex-col shadow-lg">
         {/* 头部 */}
-        <div className="flex-shrink-0 px-8 py-6 bg-white/40 backdrop-blur-md border-b-4 border-white/50">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-gradient-to-br from-teal-500 to-cyan-500 rounded-2xl shadow-[4px_4px_8px_rgba(0,0,0,0.1),-2px_-2px_6px_rgba(255,255,255,0.8)]">
-                <Sparkles className="w-6 h-6 text-white" />
-              </div>
-              <h2 className="text-2xl font-bold text-slate-800">
-                {currentDoc ? 'AI 生成章节内容' : 'AI 生成学习大纲'}
-              </h2>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isGenerating}
-              className="p-2.5 rounded-xl hover:bg-white/60 transition-all disabled:opacity-50 shadow-[2px_2px_4px_rgba(0,0,0,0.1)] active:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.1)] cursor-pointer"
-              aria-label="关闭"
-            >
-              <X className="w-5 h-5 text-slate-600" />
-            </button>
-          </div>
+        <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-900">
+            {currentDoc ? 'AI 生成章节内容' : 'AI 生成学习大纲'}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isGenerating}
+            className="p-1 hover:bg-gray-100 rounded transition-colors disabled:opacity-50 cursor-pointer"
+            aria-label="关闭"
+          >
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
         </div>
 
         {/* 表单 - 可滚动区域 */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
-          <div className="p-8 space-y-6">
-          {/* 学习主题 */}
-          <div>
-            <label htmlFor="topic" className="block text-sm font-bold text-slate-700 mb-3">
-              {currentDoc ? '章节标题' : '学习主题'} <span className="text-orange-500">*</span>
-            </label>
-            <input
-              id="topic"
-              type="text"
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              placeholder={currentDoc ? "自动填充当前章节标题" : "例如：React Hooks 进阶"}
-              disabled={isGenerating || !!currentDoc}
-              className={cn(
-                "w-full px-5 py-4 rounded-2xl border-4 border-white/50",
-                "bg-white/90 backdrop-blur-sm",
-                "text-slate-800 placeholder:text-slate-400 font-medium",
-                "shadow-[inset_2px_2px_4px_rgba(0,0,0,0.05),2px_2px_6px_rgba(255,255,255,0.8)]",
-                "focus:outline-none focus:border-teal-400 focus:shadow-[inset_2px_2px_6px_rgba(13,148,136,0.1),0_0_0_3px_rgba(13,148,136,0.1)]",
-                "disabled:bg-slate-100/80 disabled:text-slate-600",
-                "transition-all duration-200"
-              )}
-              required
-            />
-          </div>
-
-          {/* 学习目标 */}
-          <div>
-            <label htmlFor="goal" className="block text-sm font-bold text-slate-700 mb-3">
-              学习目标（可选）
-            </label>
-            <textarea
-              id="goal"
-              value={goal}
-              onChange={(e) => setGoal(e.target.value)}
-              placeholder="例如：掌握 useState、useEffect、useContext 等常用 Hooks"
-              disabled={isGenerating}
-              rows={3}
-              className={cn(
-                "w-full px-5 py-4 rounded-2xl border-4 border-white/50",
-                "bg-white/90 backdrop-blur-sm",
-                "text-slate-800 placeholder:text-slate-400 font-medium",
-                "shadow-[inset_2px_2px_4px_rgba(0,0,0,0.05),2px_2px_6px_rgba(255,255,255,0.8)]",
-                "focus:outline-none focus:border-teal-400 focus:shadow-[inset_2px_2px_6px_rgba(13,148,136,0.1),0_0_0_3px_rgba(13,148,136,0.1)]",
-                "disabled:bg-slate-100/80 disabled:text-slate-600",
-                "transition-all duration-200 resize-none"
-              )}
-            />
-          </div>
-
-          {/* 补充描述 - 仅在生成章节内容时显示 */}
-          {currentDoc && (
+          <div className="p-6 space-y-4">
+            {/* 学习主题 */}
             <div>
-              <label htmlFor="additionalContext" className="block text-sm font-bold text-slate-700 mb-3">
-                补充描述（可选）
+              <label htmlFor="topic" className="block text-sm font-medium text-gray-700 mb-2">
+                {currentDoc ? '章节标题' : '学习主题'} <span className="text-red-500">*</span>
               </label>
-              <textarea
-                id="additionalContext"
-                value={additionalContext}
-                onChange={(e) => setAdditionalContext(e.target.value)}
-                placeholder="例如：重点讲解实际应用场景，包含完整代码示例"
-                disabled={isGenerating}
-                rows={3}
-                className={cn(
-                  "w-full px-5 py-4 rounded-2xl border-4 border-white/50",
-                  "bg-white/90 backdrop-blur-sm",
-                  "text-slate-800 placeholder:text-slate-400 font-medium",
-                  "shadow-[inset_2px_2px_4px_rgba(0,0,0,0.05),2px_2px_6px_rgba(255,255,255,0.8)]",
-                  "focus:outline-none focus:border-teal-400 focus:shadow-[inset_2px_2px_6px_rgba(13,148,136,0.1),0_0_0_3px_rgba(13,148,136,0.1)]",
-                  "disabled:bg-slate-100/80 disabled:text-slate-600",
-                  "transition-all duration-200 resize-none"
-                )}
+              <input
+                id="topic"
+                type="text"
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                placeholder={currentDoc ? "自动填充当前章节标题" : "例如：React Hooks 进阶"}
+                disabled={isGenerating || !!currentDoc}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500 text-sm"
+                required
               />
             </div>
-          )}
 
-          {/* 难度级别 */}
-          <div>
-            <label className="block text-sm font-bold text-slate-700 mb-3">
-              难度级别
-            </label>
-            <div className="grid grid-cols-3 gap-3">
-              {[
-                { value: 'beginner', label: '初级', color: 'from-green-400 to-emerald-500', activeColor: 'from-green-500 to-emerald-600' },
-                { value: 'intermediate', label: '中级', color: 'from-blue-400 to-cyan-500', activeColor: 'from-blue-500 to-cyan-600' },
-                { value: 'advanced', label: '高级', color: 'from-purple-400 to-pink-500', activeColor: 'from-purple-500 to-pink-600' },
-              ].map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setLevel(option.value as any)}
+            {/* 学习目标 */}
+            <div>
+              <label htmlFor="goal" className="block text-sm font-medium text-gray-700 mb-2">
+                学习目标（可选）
+              </label>
+              <textarea
+                id="goal"
+                value={goal}
+                onChange={(e) => setGoal(e.target.value)}
+                placeholder="例如：掌握 useState、useEffect、useContext 等常用 Hooks"
+                disabled={isGenerating}
+                rows={2}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500 text-sm resize-none"
+              />
+            </div>
+
+            {/* 补充描述 - 仅在生成章节内容时显示 */}
+            {currentDoc && (
+              <div>
+                <label htmlFor="additionalContext" className="block text-sm font-medium text-gray-700 mb-2">
+                  补充描述（可选）
+                </label>
+                <textarea
+                  id="additionalContext"
+                  value={additionalContext}
+                  onChange={(e) => setAdditionalContext(e.target.value)}
+                  placeholder="例如：重点讲解实际应用场景，包含完整代码示例"
                   disabled={isGenerating}
-                  className={cn(
-                    "px-4 py-4 rounded-2xl border-4 font-bold transition-all duration-200 cursor-pointer",
-                    "shadow-[4px_4px_8px_rgba(0,0,0,0.1),-2px_-2px_6px_rgba(255,255,255,0.8)]",
-                    "active:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.1)]",
-                    "disabled:opacity-50 disabled:cursor-not-allowed",
-                    level === option.value
-                      ? `bg-gradient-to-br ${option.activeColor} border-white/50 text-white scale-[1.05] shadow-[6px_6px_12px_rgba(0,0,0,0.15),-3px_-3px_8px_rgba(255,255,255,0.9)]`
-                      : "bg-white/90 border-white/50 text-slate-700 hover:scale-[1.02] hover:bg-white"
-                  )}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500 text-sm resize-none"
+                />
+              </div>
+            )}
 
-          {/* 提示信息 */}
-          {currentDoc ? (
-            <div className="px-5 py-4 rounded-2xl bg-gradient-to-br from-green-100 to-emerald-100 border-4 border-white/50 shadow-[inset_2px_2px_4px_rgba(34,197,94,0.1)]">
-              <p className="text-sm font-bold text-green-800">
-                ✨ 将为当前章节「{currentDoc.title}」生成详细学习内容
-              </p>
+            {/* 难度级别 */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                难度级别
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { value: 'beginner', label: '初级' },
+                  { value: 'intermediate', label: '中级' },
+                  { value: 'advanced', label: '高级' },
+                ].map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setLevel(option.value as any)}
+                    disabled={isGenerating}
+                    className={cn(
+                      "px-3 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer",
+                      level === option.value
+                        ? "bg-teal-500 text-white"
+                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          ) : parentDocId ? (
-            <div className="px-5 py-4 rounded-2xl bg-gradient-to-br from-blue-100 to-cyan-100 border-4 border-white/50 shadow-[inset_2px_2px_4px_rgba(59,130,246,0.1)]">
-              <p className="text-sm font-bold text-blue-800">
-                💡 将在当前文档下生成子文档
-              </p>
-            </div>
-          ) : null}
+
+            {/* AI 模型选择 */}
+            <ConfiguredModelSelector
+              value={selectedModelId}
+              onChange={setSelectedModelId}
+              label="AI 模型"
+            />
+
+            {/* 提示信息 */}
+            {currentDoc ? (
+              <div className="px-3 py-2 rounded-lg bg-blue-50 border border-blue-200">
+                <p className="text-sm text-blue-800">
+                  将为「{currentDoc.title}」生成详细学习内容
+                </p>
+              </div>
+            ) : parentDocId ? (
+              <div className="px-3 py-2 rounded-lg bg-blue-50 border border-blue-200">
+                <p className="text-sm text-blue-800">
+                  将在当前文档下生成子文档
+                </p>
+              </div>
+            ) : null}
           </div>
         </form>
 
         {/* 底部按钮 - 固定在底部 */}
-        <div className="flex-shrink-0 px-8 py-6 bg-white/40 backdrop-blur-md border-t-4 border-white/50">
-          <div className="flex gap-4">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isGenerating}
-              className={cn(
-                "flex-1 px-6 py-4 rounded-2xl border-4 border-white/50",
-                "bg-white/80 text-slate-700 font-bold",
-                "shadow-[4px_4px_8px_rgba(0,0,0,0.1),-2px_-2px_6px_rgba(255,255,255,0.8)]",
-                "hover:scale-[1.02] active:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.1)]",
-                "transition-all duration-200",
-                "disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-              )}
-            >
-              取消
-            </button>
-            <button
-              type="submit"
-              onClick={handleSubmit}
-              disabled={isGenerating || !topic.trim()}
-              className={cn(
-                "flex-1 px-6 py-4 rounded-2xl border-4 border-white/50",
-                "bg-gradient-to-br from-teal-500 to-cyan-500",
-                "text-white font-bold",
-                "shadow-[4px_4px_8px_rgba(0,0,0,0.1),-2px_-2px_6px_rgba(255,255,255,0.8)]",
-                "hover:scale-[1.02] hover:from-teal-600 hover:to-cyan-600",
-                "active:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.1)]",
-                "disabled:opacity-50 disabled:cursor-not-allowed",
-                "transition-all duration-200",
-                "flex items-center justify-center gap-2 cursor-pointer"
-              )}
-            >
-              {isGenerating ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  生成中...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-5 h-5" />
-                  开始生成
-                </>
-              )}
-            </button>
-          </div>
+        <div className="flex-shrink-0 px-6 py-4 border-t border-gray-200 flex gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isGenerating}
+            className="flex-1 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors disabled:opacity-50 cursor-pointer text-sm"
+          >
+            取消
+          </button>
+          <button
+            type="submit"
+            onClick={handleSubmit}
+            disabled={isGenerating || !topic.trim()}
+            className="flex-1 px-4 py-2 rounded-lg bg-teal-500 text-white font-medium hover:bg-teal-600 transition-colors disabled:opacity-50 cursor-pointer text-sm flex items-center justify-center gap-2"
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                生成中...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4" />
+                生成
+              </>
+            )}
+          </button>
         </div>
       </div>
     </div>

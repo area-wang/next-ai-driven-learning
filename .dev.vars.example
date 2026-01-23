@@ -21,4 +21,14 @@ R2_SECRET_ACCESS_KEY=your-secret-access-key
 R2_BUCKET_NAME=your-bucket-name
 R2_PUBLIC_URL=https://your-bucket.r2.dev
 
+# AI API Keys
+# OpenRouter 统一 API Key (推荐 - 支持所有模型)
+OPENROUTER_API_KEY=your-openrouter-api-key
+
+# 或者单独配置各厂商 API Key
 DEEPSEEK_API_KEY=sk-74fdba8d61504b468194e75797b879d1
+OPENAI_API_KEY=your-openai-api-key
+GEMINI_API_KEY=your-gemini-api-key
+ANTHROPIC_API_KEY=your-anthropic-api-key
+OPENROUTER_API_KEY=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
+

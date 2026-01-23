@@ -33,6 +33,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { VideoEmbedDialog } from "./video-embed-dialog"
+import { useToast } from "@/components/ui/toast-container"
 
 interface EditorToolbarProps {
   editor: Editor
@@ -85,6 +86,7 @@ function ToolbarDivider() {
 
 export function EditorToolbar({ editor }: EditorToolbarProps) {
   const [isVideoDialogOpen, setIsVideoDialogOpen] = React.useState(false)
+  const toast = useToast()
 
   const addImage = React.useCallback(() => {
     // 创建文件选择器
@@ -123,11 +125,11 @@ export function EditorToolbar({ editor }: EditorToolbarProps) {
         })
       } catch (error) {
         console.error('图片上传失败:', error)
-        alert('图片上传失败，请重试')
+        toast.error('图片上传失败，请重试')
       }
     }
     input.click()
-  }, [editor])
+  }, [editor, toast])
 
   const addLink = React.useCallback(() => {
     const previousUrl = editor.getAttributes("link").href

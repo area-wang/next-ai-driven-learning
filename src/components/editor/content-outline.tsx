@@ -28,6 +28,7 @@ export function ContentOutline({ editor, className }: ContentOutlineProps) {
     new Set([1, 2, 3, 4, 5, 6])
   )
   const [activeId, setActiveId] = React.useState<string | null>(null)
+  const [isCollapsed, setIsCollapsed] = React.useState(false)
 
   // 提取文档中的标题
   React.useEffect(() => {
@@ -64,23 +65,29 @@ export function ContentOutline({ editor, className }: ContentOutlineProps) {
   }, [editor])
 
   // 跳转到指定标题
-  const scrollToHeading = (pos: number) => {
+  const scrollToHeading = React.useCallback((pos: number) => {
     if (!editor) return
 
-    editor.commands.focus()
-    editor.commands.setTextSelection(pos)
+    // 获取编辑器容器
+    const editorContainer = editor.view.dom.closest('.flex-1') as HTMLElement
+    if (!editorContainer) return
 
-    // 滚动到视图
+    // 获取标题元素的坐标
     const { view } = editor
-    const dom = view.domAtPos(pos)
-    if (dom.node) {
-      const element = dom.node as HTMLElement
-      element.scrollIntoView({ behavior: "smooth", block: "center" })
-    }
-  }
+    const coords = view.coordsAtPos(pos)
+    
+    // 计算滚动位置：将标题滚动到距离视口顶部 100px 的位置
+    const containerRect = editorContainer.getBoundingClientRect()
+    const targetScrollTop = editorContainer.scrollTop + (coords.top - containerRect.top) - 100
+    
+    editorContainer.scrollTo({
+      top: Math.max(0, targetScrollTop),
+      behavior: 'smooth',
+    })
+  }, [editor])
 
   // 切换展开/收起
-  const toggleLevel = (level: number) => {
+  const toggleLevel = React.useCallback((level: number) => {
     setExpandedLevels((prev) => {
       const next = new Set(prev)
       if (next.has(level)) {
@@ -90,7 +97,7 @@ export function ContentOutline({ editor, className }: ContentOutlineProps) {
       }
       return next
     })
-  }
+  }, [])
 
   // 按层级组织标题
   const organizedHeadings = React.useMemo(() => {
@@ -119,13 +126,18 @@ export function ContentOutline({ editor, className }: ContentOutlineProps) {
     return result
   }, [headings])
 
-  const renderHeading = (
+  const renderHeading = React.useCallback((
     item: HeadingItem & { children?: HeadingItem[] },
     depth: number = 0
   ) => {
     const hasChildren = item.children && item.children.length > 0
     const isExpanded = expandedLevels.has(item.level)
     const isActive = activeId === item.id
+
+    const handleHeadingClick = () => {
+      scrollToHeading(item.pos)
+      setActiveId(item.id)
+    }
 
     return (
       <div key={item.id}>
@@ -137,10 +149,7 @@ export function ContentOutline({ editor, className }: ContentOutlineProps) {
               : "hover:bg-gray-100 text-[var(--color-text)]"
           )}
           style={{ paddingLeft: `${depth * 12 + 8}px` }}
-          onClick={() => {
-            scrollToHeading(item.pos)
-            setActiveId(item.id)
-          }}
+          onClick={handleHeadingClick}
         >
           {/* 展开/收起按钮 */}
           {hasChildren ? (
@@ -183,24 +192,44 @@ export function ContentOutline({ editor, className }: ContentOutlineProps) {
         )}
       </div>
     )
-  }
+  }, [activeId, expandedLevels, scrollToHeading, toggleLevel])
 
   if (!editor || headings.length === 0) {
     return (
       <div
         className={cn(
-          "w-64 border-l border-gray-200 bg-white/50 backdrop-blur-sm flex flex-col",
+          "border-l border-gray-200 bg-white/50 backdrop-blur-sm flex flex-col transition-all duration-300",
+          isCollapsed ? "w-12" : "w-64",
           className
         )}
       >
-        <div className="px-4 py-3 border-b border-gray-200">
-          <h2 className="font-semibold text-[var(--color-text)]">大纲</h2>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+          {!isCollapsed && (
+            <h2 className="font-semibold text-[var(--color-text)]">大纲</h2>
+          )}
+          <button
+            type="button"
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className={cn(
+              "flex items-center justify-center w-7 h-7 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer",
+              isCollapsed && "mx-auto"
+            )}
+            aria-label={isCollapsed ? "展开大纲" : "收起大纲"}
+          >
+            {isCollapsed ? (
+              <ChevronRight className="w-4 h-4 text-[var(--color-text)]" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-[var(--color-text)]" />
+            )}
+          </button>
         </div>
-        <div className="flex-1 flex items-center justify-center p-4">
-          <p className="text-sm text-gray-400 text-center">
-            文档中还没有标题
-          </p>
-        </div>
+        {!isCollapsed && (
+          <div className="flex-1 flex items-center justify-center p-4">
+            <p className="text-sm text-gray-400 text-center">
+              文档中还没有标题
+            </p>
+          </div>
+        )}
       </div>
     )
   }
@@ -208,19 +237,39 @@ export function ContentOutline({ editor, className }: ContentOutlineProps) {
   return (
     <div
       className={cn(
-        "w-64 border-l border-gray-200 bg-white/50 backdrop-blur-sm flex flex-col",
+        "border-l border-gray-200 bg-white/50 backdrop-blur-sm flex flex-col transition-all duration-300",
+        isCollapsed ? "w-12" : "w-64",
         className
       )}
     >
       {/* 头部 */}
-      <div className="px-4 py-3 border-b border-gray-200">
-        <h2 className="font-semibold text-[var(--color-text)]">大纲</h2>
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+        {!isCollapsed && (
+          <h2 className="font-semibold text-[var(--color-text)]">大纲</h2>
+        )}
+        <button
+          type="button"
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          className={cn(
+            "flex items-center justify-center w-7 h-7 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer",
+            isCollapsed && "mx-auto"
+          )}
+          aria-label={isCollapsed ? "展开大纲" : "收起大纲"}
+        >
+          {isCollapsed ? (
+            <ChevronRight className="w-4 h-4 text-[var(--color-text)]" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-[var(--color-text)]" />
+          )}
+        </button>
       </div>
 
       {/* 大纲列表 */}
-      <div className="flex-1 overflow-y-auto p-2">
-        {organizedHeadings.map((heading) => renderHeading(heading))}
-      </div>
+      {!isCollapsed && (
+        <div className="flex-1 overflow-y-auto p-2">
+          {organizedHeadings.map((heading) => renderHeading(heading))}
+        </div>
+      )}
     </div>
   )
 }

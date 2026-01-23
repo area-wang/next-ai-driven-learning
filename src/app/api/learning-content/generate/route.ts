@@ -7,8 +7,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
 import { getDbClient } from '@/lib/db-connection'
 import { knowledgeContents } from '@/db/schema'
-import { createAIClient, type AIProvider } from '@/lib/ai/client'
+import { createAIClientFromRequest } from '@/lib/ai/config-client'
 import { generateContentPrompt, type ContentInput } from '@/lib/ai/prompts'
+import { type AIClient } from '@/lib/ai/client'
 
 interface GenerateRequest {
   outlineId: string
@@ -17,8 +18,7 @@ interface GenerateRequest {
   goal?: string
   additionalContext?: string
   level: 'beginner' | 'intermediate' | 'advanced'
-  provider?: AIProvider
-  model?: string
+  modelId?: string // 指定使用的模型ID
 }
 
 export async function POST(request: NextRequest) {
@@ -30,9 +30,8 @@ export async function POST(request: NextRequest) {
       chapterTitle,
       goal,
       additionalContext,
-      level, 
-      provider = 'openai', 
-      model 
+      level,
+      modelId,
     } = body
 
     console.log('[API] Learning content generate request:', {
@@ -40,8 +39,7 @@ export async function POST(request: NextRequest) {
       topic,
       chapterTitle,
       level,
-      provider,
-      model,
+      modelId,
     })
 
     if (!outlineId || !topic || !chapterTitle) {
@@ -51,57 +49,43 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 获取 API Key
-    let apiKey: string | undefined
-    const clientApiKey = request.headers.get('x-api-key')
-    
-    switch (provider) {
-      case 'openai':
-        apiKey = clientApiKey || process.env.OPENAI_API_KEY
-        break
-      case 'deepseek':
-        apiKey = clientApiKey || process.env.DEEPSEEK_API_KEY
-        break
-      case 'gemini':
-        apiKey = clientApiKey || process.env.GEMINI_API_KEY
-        break
-      case 'claude':
-        apiKey = clientApiKey || process.env.CLAUDE_API_KEY
-        break
-      case 'cloudflare':
-        break
-    }
-
-    console.log('[API] API Key check:', {
-      provider,
-      hasClientKey: !!clientApiKey,
-      hasEnvKey: !!apiKey,
-    })
-
-    // 检查是否需要 API Key
-    if (provider === 'cloudflare') {
+    // 从配置创建 AI 客户端
+    console.log('[API] Creating AI client from config...')
+    let aiClient: AIClient
+    try {
+      // 如果提供了 modelId，使用指定的模型
+      if (modelId) {
+        const { OpenAIClient } = await import('@/lib/ai/client')
+        
+        // 从环境变量读取 OpenRouter API Key（安全）
+        const apiKey = process.env.OPENROUTER_API_KEY
+        if (!apiKey) {
+          throw new Error('未配置 OPENROUTER_API_KEY 环境变量')
+        }
+        
+        const modelConfigHeader = request.headers.get('x-model-config')
+        if (modelConfigHeader) {
+          const modelConfig = JSON.parse(modelConfigHeader)
+          // 使用环境变量中的 API Key
+          aiClient = new OpenAIClient(
+            apiKey,
+            modelConfig.model,
+            modelConfig.baseUrl || 'https://openrouter.ai/api/v1'
+          )
+        } else {
+          throw new Error('未提供模型配置，请确保客户端正确传递了模型信息')
+        }
+      } else {
+        // 使用默认配置
+        aiClient = createAIClientFromRequest(request)
+      }
+    } catch (clientError) {
+      console.error('[API] Failed to create AI client:', clientError)
       return NextResponse.json(
-        { error: 'Cloudflare AI 在当前环境不可用,请选择其他 AI 提供商' },
-        { status: 400 }
+        { error: `${clientError instanceof Error ? clientError.message : '创建 AI 客户端失败'}` },
+        { status: 500 }
       )
     }
-
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: `请配置 ${provider} 的 API Key` },
-        { status: 400 }
-      )
-    }
-
-    // 创建 AI 客户端
-    console.log('[API] Creating AI client:', { provider, model })
-    
-    const aiClient = createAIClient({
-      provider,
-      apiKey,
-      model,
-      ai: (request as any).env?.AI,
-    })
 
     // 构建提示词
     const input: ContentInput = {

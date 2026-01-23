@@ -7,16 +7,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
 import { getDbClient } from '@/lib/db-connection'
 import { learningPlans, learningOutlines, knowledgeContents } from '@/db/schema'
-import { createAIClient, type AIProvider } from '@/lib/ai/client'
+import { createAIClientFromRequest } from '@/lib/ai/config-client'
 import { generateOutlinePrompt, type OutlineInput } from '@/lib/ai/prompts'
+import { type AIClient } from '@/lib/ai/client'
 
 interface GenerateRequest {
+  planId?: string // 添加 planId 参数
+  parentId?: string // 添加 parentId 参数
   topic: string
   goal?: string
   level: 'beginner' | 'intermediate' | 'advanced'
-  provider?: AIProvider
-  model?: string
   userId?: string
+  modelId?: string // 指定使用的模型ID
 }
 
 interface OutlineItem {
@@ -35,15 +37,16 @@ interface OutlineResponse {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as GenerateRequest
-    const { topic, goal, level, provider = 'openai', model, userId = 'demo-user' } = body
+    const { planId, parentId, topic, goal, level, userId = 'demo-user', modelId } = body
 
     console.log('[API] Learning outline generate request:', {
+      planId,
+      parentId,
       topic,
       goal,
       level,
-      provider,
-      model,
       userId,
+      modelId,
     })
 
     if (!topic) {
@@ -53,67 +56,40 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 获取 API Key
-    let apiKey: string | undefined
-    const clientApiKey = request.headers.get('x-api-key')
-    
-    switch (provider) {
-      case 'openai':
-        apiKey = clientApiKey || process.env.OPENAI_API_KEY
-        break
-      case 'deepseek':
-        apiKey = clientApiKey || process.env.DEEPSEEK_API_KEY
-        break
-      case 'gemini':
-        apiKey = clientApiKey || process.env.GEMINI_API_KEY
-        break
-      case 'claude':
-        apiKey = clientApiKey || process.env.CLAUDE_API_KEY
-        break
-      case 'cloudflare':
-        break
-    }
-
-    console.log('[API] API Key check:', {
-      provider,
-      hasClientKey: !!clientApiKey,
-      hasEnvKey: !!apiKey,
-    })
-
-    // 检查是否需要 API Key
-    if (provider === 'cloudflare') {
-      return NextResponse.json(
-        { error: 'Cloudflare AI 在当前环境不可用,请选择其他 AI 提供商(OpenAI、DeepSeek、Gemini 或 Claude)并配置 API Key' },
-        { status: 400 }
-      )
-    }
-
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: `请配置 ${provider} 的 API Key` },
-        { status: 400 }
-      )
-    }
-
-    // 创建 AI 客户端
-    console.log('[API] Creating AI client:', { 
-      provider, 
-      model,
-      hasAI: !!(request as any).env?.AI,
-    })
-    
-    let aiClient: ReturnType<typeof createAIClient>
+    // 从配置创建 AI 客户端
+    console.log('[API] Creating AI client from config...')
+    let aiClient: AIClient
     try {
-      aiClient = createAIClient({
-        provider,
-        apiKey,
-        model,
-        ai: (request as any).env?.AI,
-      })
+      // 如果提供了 modelId，使用指定的模型
+      if (modelId) {
+        const { OpenAIClient } = await import('@/lib/ai/client')
+        
+        // 从环境变量读取 OpenRouter API Key（安全）
+        const apiKey = process.env.OPENROUTER_API_KEY
+        if (!apiKey) {
+          throw new Error('未配置 OPENROUTER_API_KEY 环境变量')
+        }
+        
+        const modelConfigHeader = request.headers.get('x-model-config')
+        if (modelConfigHeader) {
+          const modelConfig = JSON.parse(modelConfigHeader)
+          // 使用环境变量中的 API Key
+          aiClient = new OpenAIClient(
+            apiKey,
+            modelConfig.model,
+            modelConfig.baseUrl || 'https://openrouter.ai/api/v1'
+          )
+        } else {
+          throw new Error('未提供模型配置，请确保客户端正确传递了模型信息')
+        }
+      } else {
+        // 使用默认配置
+        aiClient = createAIClientFromRequest(request)
+      }
     } catch (clientError) {
       console.error('[API] Failed to create AI client:', clientError)
       return NextResponse.json(
-        { error: `创建 AI 客户端失败: ${clientError instanceof Error ? clientError.message : '未知错误'}` },
+        { error: `${clientError instanceof Error ? clientError.message : '创建 AI 客户端失败'}` },
         { status: 500 }
       )
     }
@@ -145,15 +121,6 @@ export async function POST(request: NextRequest) {
       console.log('[API] AI response preview:', response.slice(0, 200))
     } catch (aiError) {
       console.error('[API] AI call failed:', aiError)
-      
-      // 特别处理 DeepSeek 错误
-      if (provider === 'deepseek') {
-        return NextResponse.json(
-          { error: `DeepSeek API 调用失败: ${aiError instanceof Error ? aiError.message : '未知错误'}。请检查 API Key 是否正确。` },
-          { status: 500 }
-        )
-      }
-      
       return NextResponse.json(
         { error: `AI 调用失败: ${aiError instanceof Error ? aiError.message : '未知错误'}` },
         { status: 500 }
@@ -192,47 +159,59 @@ export async function POST(request: NextRequest) {
     try {
       console.log('[API] Saving to database...')
       
-      // 0. 确保 demo-user 存在
-      const { users } = await import('@/db/schema')
-      const existingUser = await db.select().from(users).where(eq(users.id, userId)).limit(1)
+      let targetPlanId = planId
       
-      if (existingUser.length === 0) {
-        console.log('[API] Creating demo user...')
-        await db.insert(users).values({
-          id: userId,
-          email: 'demo@example.com',
-          name: 'Demo User',
-          provider: 'demo',
-        })
+      // 如果没有提供 planId，创建新的学习计划
+      if (!targetPlanId) {
+        // 确保 demo-user 存在
+        const { users } = await import('@/db/schema')
+        const existingUser = await db.select().from(users).where(eq(users.id, userId)).limit(1)
+        
+        if (existingUser.length === 0) {
+          console.log('[API] Creating demo user...')
+          await db.insert(users).values({
+            id: userId,
+            email: 'demo@example.com',
+            name: 'Demo User',
+            provider: 'demo',
+          })
+        }
+        
+        // 创建学习计划
+        const [plan] = await db.insert(learningPlans).values({
+          userId,
+          title: topic,
+          description: goal || `学习 ${topic}`,
+          topic,
+          goal,
+          level,
+          status: 'active',
+          progress: 0,
+        }).returning()
+        targetPlanId = plan.id
+        console.log('[API] Created plan:', targetPlanId)
+      } else {
+        console.log('[API] Using existing plan:', targetPlanId)
       }
-      
-      // 1. 创建学习计划
-      const [plan] = await db.insert(learningPlans).values({
-        userId,
-        title: topic,
-        description: goal || `学习 ${topic}`,
-        topic,
-        goal,
-        level,
-        status: 'active',
-        progress: 0,
-      }).returning()
-      console.log('[API] Created plan:', plan.id)
 
-      // 2. 递归保存大纲项和内容
+      // 递归保存大纲项和内容
+      const savedOutlines: any[] = []
+      
       const saveOutlineItems = async (
         items: OutlineItem[],
-        parentId: string | null = null,
+        currentParentId: string | null = null,
         level: number = 0
-      ) => {
+      ): Promise<any[]> => {
+        const results: any[] = []
+        
         for (let i = 0; i < items.length; i++) {
           const item = items[i]
           const estimatedMinutes = parseInt(item.estimatedTime) || 60
 
           // 保存大纲项
           const [outline] = await db.insert(learningOutlines).values({
-            planId: plan.id,
-            parentId,
+            planId: targetPlanId!,
+            parentId: currentParentId,
             title: item.title,
             description: item.description,
             order: i,
@@ -263,19 +242,31 @@ export async function POST(request: NextRequest) {
             aiGenerated: true,
           })
 
+          // 构建返回对象
+          const outlineResult: any = {
+            id: outline.id,
+            title: outline.title,
+            description: outline.description,
+            estimatedTime: outline.estimatedTime,
+          }
+
           // 递归保存子项
           if (item.children && item.children.length > 0) {
-            await saveOutlineItems(item.children, outline.id, level + 1)
+            outlineResult.children = await saveOutlineItems(item.children, outline.id, level + 1)
           }
+          
+          results.push(outlineResult)
         }
+        
+        return results
       }
 
-      await saveOutlineItems(outlineData.outline)
+      const savedItems = await saveOutlineItems(outlineData.outline, parentId || null)
       console.log('[API] Successfully saved all outline items')
 
       return NextResponse.json({
-        ...outlineData,
-        planId: plan.id,
+        outlines: savedItems,
+        planId: targetPlanId,
         saved: true,
       })
     } catch (dbError) {

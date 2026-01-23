@@ -44,6 +44,7 @@ export const learningOutlines = sqliteTable('learning_outlines', {
   order: integer('order').notNull(),
   level: integer('level').default(0),
   estimatedTime: integer('estimated_time'),
+  isTestDocument: integer('is_test_document', { mode: 'boolean' }).default(false), // 标记是否为测试题文档
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
 })
 
@@ -63,13 +64,15 @@ export const knowledgeContents = sqliteTable('knowledge_contents', {
 export const testQuestions = sqliteTable('test_questions', {
   id: text('id').primaryKey().$defaultFn(() => createId()),
   contentId: text('content_id').notNull().references(() => knowledgeContents.id),
-  questionType: text('question_type').notNull(), // 'multiple_choice' | 'fill_blank' | 'coding' | 'essay'
+  questionIndex: integer('question_index').notNull(), // 题目序号（第几题）
+  questionType: text('question_type').notNull(), // 'choice' | 'multiple-choice' | 'true-false' | 'fill' | 'short' | 'essay' | 'code' | 'matching' | 'ordering'
   question: text('question').notNull(),
   options: text('options'), // JSON数组
   correctAnswer: text('correct_answer').notNull(),
   explanation: text('explanation'),
   difficulty: text('difficulty').default('medium'),
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).$onUpdate(() => new Date()),
 })
 
 // 用户答题记录表

@@ -28,6 +28,9 @@ import { TableMenu } from "./table-menu"
 import { Callout } from "./callout-extension"
 import { ResizableImage, ResizableVideo } from "./resizable-media-extension"
 import { CustomCodeBlock } from "./code-block-extension"
+import { AIFloatingInput } from "./ai-floating-input"
+import { Details, Summary } from "./details-extension"
+import { SimilarQuestionButton } from "./similar-question-button-extension"
 
 interface UploadState {
   fileName: string
@@ -46,6 +49,7 @@ export interface TiptapEditorProps {
   onBlur?: () => void
   showBubbleMenu?: boolean // 是否显示浮动工具栏
   onEditorReady?: (editor: Editor) => void // 编辑器准备好的回调
+  onSimilarQuestionClick?: (questionIndex: number) => void // 举一反三按钮点击回调
 }
 
 export function TiptapEditor({
@@ -59,19 +63,92 @@ export function TiptapEditor({
   onBlur,
   showBubbleMenu = true, // 默认显示浮动工具栏
   onEditorReady,
+  onSimilarQuestionClick,
 }: TiptapEditorProps) {
   const [uploadState, setUploadState] = React.useState<UploadState | null>(null)
   const [localTitle, setLocalTitle] = React.useState(title)
+  const [isAIInputOpen, setIsAIInputOpen] = React.useState(false)
+  const [aiAnchorElement, setAiAnchorElement] = React.useState<HTMLElement | null>(null)
+  const [aiContext, setAiContext] = React.useState("")
+  const editorRef = React.useRef<Editor | null>(null)
 
   // 当外部 title 改变时，更新本地 title
   React.useEffect(() => {
     setLocalTitle(title)
   }, [title])
 
+  // 监听 AI 提示框打开事件
+  React.useEffect(() => {
+    const handleOpenAIPrompt = (event: Event) => {
+      const customEvent = event as CustomEvent
+      if (editorRef.current) {
+        // 获取当前编辑器内容作为上下文
+        const currentContent = editorRef.current.getText().substring(0, 200)
+        setAiContext(currentContent)
+        
+        // 获取光标位置的 DOM 元素
+        const view = editorRef.current.view
+        const pos = view.state.selection.from
+        
+        // 创建一个临时元素来获取位置
+        const coords = view.coordsAtPos(pos)
+        
+        // 创建一个虚拟的锚点元素
+        const anchorEl = document.createElement('div')
+        anchorEl.style.position = 'fixed'
+        anchorEl.style.left = `${coords.left}px`
+        anchorEl.style.top = `${coords.top}px`
+        anchorEl.style.width = '0'
+        anchorEl.style.height = '0'
+        anchorEl.style.pointerEvents = 'none'
+        document.body.appendChild(anchorEl)
+        
+        setAiAnchorElement(anchorEl)
+        setIsAIInputOpen(true)
+      }
+    }
+
+    document.addEventListener("openAIPrompt", handleOpenAIPrompt)
+    return () => {
+      document.removeEventListener("openAIPrompt", handleOpenAIPrompt)
+    }
+  }, [])
+
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newTitle = e.target.value
     setLocalTitle(newTitle)
     onTitleChange?.(newTitle)
+  }
+
+  const handleAIGenerate = async (prompt: string) => {
+    if (!editor) return
+
+    try {
+      const response = await fetch("/api/ai/generate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt,
+          context: aiContext,
+          learningPlanTitle: localTitle,
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json() as Record<string, unknown>
+        throw new Error((error.error as string) || "生成失败")
+      }
+
+      const data = await response.json() as Record<string, unknown>
+      const generatedContent = data.content as string
+
+      // 将生成的内容插入到编辑器
+      editor.chain().focus().insertContent(generatedContent).run()
+    } catch (error) {
+      throw error
+    }
   }
 
   const editor = useEditor({
@@ -81,6 +158,7 @@ export function TiptapEditor({
         bulletList: false, // 禁用 StarterKit 的 bulletList，使用自定义的
         orderedList: false, // 禁用 StarterKit 的 orderedList，使用自定义的
         listItem: false, // 禁用 StarterKit 的 listItem，使用自定义的
+        link: false, // 禁用 StarterKit 的 link，使用自定义的
       }),
       BulletList.configure({
         HTMLAttributes: {
@@ -154,6 +232,15 @@ export function TiptapEditor({
       SlashCommand.configure({
         suggestion: slashCommandSuggestion,
       }),
+      Details,
+      Summary,
+      SimilarQuestionButton.configure({
+        onButtonClick: (questionIndex) => {
+          if (onSimilarQuestionClick) {
+            onSimilarQuestionClick(questionIndex)
+          }
+        },
+      }),
       DragDropExtension.configure({
         onUploadStart: (file) => {
           setUploadState({
@@ -198,6 +285,7 @@ export function TiptapEditor({
     content,
     editable,
     onUpdate: ({ editor }) => {
+      editorRef.current = editor
       onChange?.(editor.getHTML())
     },
     onBlur: () => {
@@ -236,8 +324,9 @@ export function TiptapEditor({
 
   // 当编辑器准备好时，调用回调
   React.useEffect(() => {
-    if (editor && onEditorReady) {
-      onEditorReady(editor)
+    if (editor) {
+      editorRef.current = editor
+      onEditorReady?.(editor)
     }
   }, [editor, onEditorReady])
 
@@ -277,6 +366,21 @@ export function TiptapEditor({
           onClose={() => setUploadState(null)}
         />
       )}
+
+      {/* AI 悬浮输入框 */}
+      <AIFloatingInput
+        isOpen={isAIInputOpen}
+        onClose={() => {
+          setIsAIInputOpen(false)
+          // 清理锚点元素
+          if (aiAnchorElement && aiAnchorElement.parentNode) {
+            aiAnchorElement.parentNode.removeChild(aiAnchorElement)
+          }
+          setAiAnchorElement(null)
+        }}
+        onGenerate={handleAIGenerate}
+        anchorElement={aiAnchorElement}
+      />
     </>
   )
 }

@@ -13,6 +13,7 @@ import { AIGenerateDialog, type GenerateParams } from "@/components/editor/ai-ge
 import { type Editor } from "@tiptap/react"
 import { useAIConfig } from "@/hooks/use-ai-config"
 import { Sparkles, Loader2 } from "lucide-react"
+import { useToast } from "@/components/ui/toast-container"
 
 export default function TestEditorPage() {
   const [editorInstance, setEditorInstance] = React.useState<Editor | null>(null)
@@ -20,6 +21,7 @@ export default function TestEditorPage() {
   const [aiParentDocId, setAIParentDocId] = React.useState<string | undefined>()
   const [isGenerating, setIsGenerating] = React.useState(false)
   const { config, getApiKey } = useAIConfig()
+  const toast = useToast()
   // 文档数据结构：包含标题和内容
   const [documentContents, setDocumentContents] = React.useState<Record<string, { title: string; content: string }>>({
     "1": {
@@ -333,14 +335,14 @@ export default function TestEditorPage() {
         setActiveDocId(nodes[0].id)
       }
 
-      alert('AI 生成成功！')
+      toast.success('AI 生成成功！')
     } catch (error) {
       console.error('AI generation failed:', error)
       throw error
     } finally {
       setIsGenerating(false)
     }
-  }, [config, getApiKey])
+  }, [config, getApiKey, toast])
 
   // 打开 AI 生成对话框
   const openAIDialog = React.useCallback((parentId?: string) => {

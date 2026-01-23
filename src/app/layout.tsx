@@ -1,6 +1,9 @@
 import type { Metadata } from "next"
 import "./globals.css"
 import { SessionProvider } from "@/components/providers/session-provider"
+import { FloatingToolButton } from "@/components/tools/floating-tool-button"
+import { ToastProvider } from "@/components/ui/toast-container"
+import { ConfirmProvider } from "@/components/ui/confirm-dialog"
 
 export const metadata: Metadata = {
   title: "AI学习平台",
@@ -16,7 +19,14 @@ export default function RootLayout({
   return (
     <html lang="zh-CN">
       <body className="font-sans antialiased bg-[var(--color-bg-light)] text-[var(--color-text)]">
-        <SessionProvider>{children}</SessionProvider>
+        <SessionProvider>
+          <ToastProvider>
+            <ConfirmProvider>
+              {children}
+              <FloatingToolButton />
+            </ConfirmProvider>
+          </ToastProvider>
+        </SessionProvider>
       </body>
     </html>
   )

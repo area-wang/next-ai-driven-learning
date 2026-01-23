@@ -1,0 +1,1 @@
+ALTER TABLE `learning_outlines` ADD `is_test_document` integer DEFAULT false;

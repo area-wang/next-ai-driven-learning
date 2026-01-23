@@ -20,6 +20,7 @@ import {
   Video,
   Table,
   Sigma,
+  Sparkles,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { SlashCommandItem } from "./slash-command"
@@ -47,6 +48,7 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Video,
   Table,
   Sigma,
+  Sparkles,
 }
 
 export const CommandList = React.forwardRef<CommandListRef, CommandListProps>(
@@ -63,6 +65,36 @@ export const CommandList = React.forwardRef<CommandListRef, CommandListProps>(
       },
       [items, command]
     )
+
+    // 禁止页面和编辑器滚动
+    React.useEffect(() => {
+      const originalBodyOverflow = document.body.style.overflow
+      const originalHtmlOverflow = document.documentElement.style.overflow
+      
+      document.body.style.overflow = 'hidden'
+      document.documentElement.style.overflow = 'hidden'
+      
+      // 查找所有可能的编辑器容器并禁止滚动
+      const editorContainers = document.querySelectorAll('[class*="overflow-y-auto"], [class*="overflow-auto"]')
+      const originalOverflows: Array<{ element: Element; overflow: string }> = []
+      
+      editorContainers.forEach((container) => {
+        originalOverflows.push({
+          element: container,
+          overflow: (container as HTMLElement).style.overflow || '',
+        })
+        ;(container as HTMLElement).style.overflow = 'hidden'
+      })
+      
+      return () => {
+        document.body.style.overflow = originalBodyOverflow
+        document.documentElement.style.overflow = originalHtmlOverflow
+        
+        originalOverflows.forEach(({ element, overflow }) => {
+          ;(element as HTMLElement).style.overflow = overflow
+        })
+      }
+    }, [])
 
     // 滚动到选中的项
     React.useEffect(() => {
