@@ -28,7 +28,6 @@ export function ContentOutline({ editor, className }: ContentOutlineProps) {
     new Set([1, 2, 3, 4, 5, 6])
   )
   const [activeId, setActiveId] = React.useState<string | null>(null)
-  const [isCollapsed, setIsCollapsed] = React.useState(false)
 
   // 提取文档中的标题
   React.useEffect(() => {
@@ -196,80 +195,22 @@ export function ContentOutline({ editor, className }: ContentOutlineProps) {
 
   if (!editor || headings.length === 0) {
     return (
-      <div
-        className={cn(
-          "border-l border-gray-200 bg-white/50 backdrop-blur-sm flex flex-col transition-all duration-300",
-          isCollapsed ? "w-12" : "w-64",
-          className
-        )}
-      >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-          {!isCollapsed && (
-            <h2 className="font-semibold text-[var(--color-text)]">大纲</h2>
-          )}
-          <button
-            type="button"
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            className={cn(
-              "flex items-center justify-center w-7 h-7 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer",
-              isCollapsed && "mx-auto"
-            )}
-            aria-label={isCollapsed ? "展开大纲" : "收起大纲"}
-          >
-            {isCollapsed ? (
-              <ChevronRight className="w-4 h-4 text-[var(--color-text)]" />
-            ) : (
-              <ChevronDown className="w-4 h-4 text-[var(--color-text)]" />
-            )}
-          </button>
+      <div className={cn("flex flex-col h-full", className)}>
+        <div className="flex-1 flex items-center justify-center p-4">
+          <p className="text-sm text-gray-400 text-center">
+            文档中还没有标题
+          </p>
         </div>
-        {!isCollapsed && (
-          <div className="flex-1 flex items-center justify-center p-4">
-            <p className="text-sm text-gray-400 text-center">
-              文档中还没有标题
-            </p>
-          </div>
-        )}
       </div>
     )
   }
 
   return (
-    <div
-      className={cn(
-        "border-l border-gray-200 bg-white/50 backdrop-blur-sm flex flex-col transition-all duration-300",
-        isCollapsed ? "w-12" : "w-64",
-        className
-      )}
-    >
-      {/* 头部 */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-        {!isCollapsed && (
-          <h2 className="font-semibold text-[var(--color-text)]">大纲</h2>
-        )}
-        <button
-          type="button"
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          className={cn(
-            "flex items-center justify-center w-7 h-7 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer",
-            isCollapsed && "mx-auto"
-          )}
-          aria-label={isCollapsed ? "展开大纲" : "收起大纲"}
-        >
-          {isCollapsed ? (
-            <ChevronRight className="w-4 h-4 text-[var(--color-text)]" />
-          ) : (
-            <ChevronDown className="w-4 h-4 text-[var(--color-text)]" />
-          )}
-        </button>
-      </div>
-
+    <div className={cn("flex flex-col h-full", className)}>
       {/* 大纲列表 */}
-      {!isCollapsed && (
-        <div className="flex-1 overflow-y-auto p-2">
-          {organizedHeadings.map((heading) => renderHeading(heading))}
-        </div>
-      )}
+      <div className="flex-1 overflow-y-auto p-2">
+        {organizedHeadings.map((heading) => renderHeading(heading))}
+      </div>
     </div>
   )
 }

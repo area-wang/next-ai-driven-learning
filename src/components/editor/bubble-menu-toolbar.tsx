@@ -28,6 +28,7 @@ import {
   AlignCenter,
   AlignRight,
   AlignJustify,
+  Underline,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -52,6 +53,7 @@ export function BubbleMenuToolbar({ editor }: BubbleMenuToolbarProps) {
   const [activeCategory, setActiveCategory] = React.useState<string | null>(null)
   const [isVisible, setIsVisible] = React.useState(false)
   const [position, setPosition] = React.useState({ top: 0, left: 0 })
+  const [isFloatingInputOpen, setIsFloatingInputOpen] = React.useState(false)
   const menuRef = React.useRef<HTMLDivElement>(null)
   const closeTimeoutRef = React.useRef<NodeJS.Timeout | null>(null)
   const showDelayTimeoutRef = React.useRef<NodeJS.Timeout | null>(null)
@@ -69,6 +71,12 @@ export function BubbleMenuToolbar({ editor }: BubbleMenuToolbarProps) {
       icon: Italic,
       action: () => editor.chain().focus().toggleItalic().run(),
       isActive: () => editor.isActive("italic"),
+    },
+    {
+      name: "下划线",
+      icon: Underline,
+      action: () => editor.chain().focus().toggleUnderline().run(),
+      isActive: () => editor.isActive("underline"),
     },
     {
       name: "删除线",
@@ -247,19 +255,38 @@ export function BubbleMenuToolbar({ editor }: BubbleMenuToolbarProps) {
     }
   }, [])
 
+  // 监听悬浮输入框的打开/关闭事件
+  React.useEffect(() => {
+    const handleFloatingInputOpen = () => {
+      setIsFloatingInputOpen(true)
+      setIsVisible(false) // 隐藏气泡工具栏
+    }
+
+    const handleFloatingInputClose = () => {
+      setIsFloatingInputOpen(false)
+    }
+
+    // 只监听链接输入框（气泡工具栏只有链接功能）
+    document.addEventListener("openLinkInput", handleFloatingInputOpen)
+    
+    // 监听悬浮输入框关闭事件
+    document.addEventListener("floatingInputClosed", handleFloatingInputClose)
+
+    return () => {
+      document.removeEventListener("openLinkInput", handleFloatingInputOpen)
+      document.removeEventListener("floatingInputClosed", handleFloatingInputClose)
+    }
+  }, [])
+
   // 添加链接
   const addLink = () => {
     const previousUrl = editor.getAttributes("link").href
-    const url = window.prompt("输入链接URL:", previousUrl)
-
-    if (url === null) return
-
-    if (url === "") {
-      editor.chain().focus().extendMarkRange("link").unsetLink().run()
-      return
-    }
-
-    editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run()
+    
+    // 触发打开链接输入框的事件
+    const event = new CustomEvent("openLinkInput", {
+      detail: { defaultValue: previousUrl || '' },
+    })
+    document.dispatchEvent(event)
   }
 
   // 应用文字颜色（只应用到选中文本）
@@ -328,6 +355,13 @@ export function BubbleMenuToolbar({ editor }: BubbleMenuToolbarProps) {
       if (showDelayTimeoutRef.current) {
         clearTimeout(showDelayTimeoutRef.current)
         showDelayTimeoutRef.current = null
+      }
+
+      // 如果悬浮输入框打开，不显示气泡工具栏
+      if (isFloatingInputOpen) {
+        setIsVisible(false)
+        setActiveCategory(null)
+        return
       }
 
       // 严格规则：只要没有选中文本，就隐藏工具栏
@@ -516,7 +550,7 @@ export function BubbleMenuToolbar({ editor }: BubbleMenuToolbarProps) {
       }
       window.removeEventListener('scroll', handleScroll)
     }
-  }, [editor, isVisible])
+  }, [editor, isVisible, isFloatingInputOpen])
 
   if (!isVisible) return null
 

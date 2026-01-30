@@ -4,12 +4,14 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { eq } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
+import { marked } from 'marked'
 import { getDbClient } from '@/lib/db-connection'
 import { knowledgeContents } from '@/db/schema'
-import { createAIClientFromRequest } from '@/lib/ai/config-client'
 import { generateContentPrompt, type ContentInput } from '@/lib/ai/prompts'
-import { type AIClient } from '@/lib/ai/client'
+import { OpenAIClient, type AIClient } from '@/lib/ai/client'
+import { getAIConfig } from '@/lib/ai/get-ai-config'
+import { getCurrentUserId } from '@/lib/auth/get-user'
 
 interface GenerateRequest {
   outlineId: string
@@ -20,6 +22,12 @@ interface GenerateRequest {
   level: 'beginner' | 'intermediate' | 'advanced'
   modelId?: string // 指定使用的模型ID
 }
+
+// 配置 marked 选项
+marked.setOptions({
+  gfm: true, // 启用 GitHub Flavored Markdown
+  breaks: true, // 将换行符转换为 <br>
+})
 
 export async function POST(request: NextRequest) {
   try {
@@ -49,40 +57,35 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 从配置创建 AI 客户端
-    console.log('[API] Creating AI client from config...')
+    // 获取当前用户 ID
+    const userId = await getCurrentUserId()
+    if (!userId) {
+      return NextResponse.json(
+        { error: '未登录' },
+        { status: 401 }
+      )
+    }
+
+    // 获取 AI 配置
+    console.log('[API] Getting AI config...')
     let aiClient: AIClient
     try {
-      // 如果提供了 modelId，使用指定的模型
-      if (modelId) {
-        const { OpenAIClient } = await import('@/lib/ai/client')
-        
-        // 从环境变量读取 OpenRouter API Key（安全）
-        const apiKey = process.env.OPENROUTER_API_KEY
-        if (!apiKey) {
-          throw new Error('未配置 OPENROUTER_API_KEY 环境变量')
-        }
-        
-        const modelConfigHeader = request.headers.get('x-model-config')
-        if (modelConfigHeader) {
-          const modelConfig = JSON.parse(modelConfigHeader)
-          // 使用环境变量中的 API Key
-          aiClient = new OpenAIClient(
-            apiKey,
-            modelConfig.model,
-            modelConfig.baseUrl || 'https://openrouter.ai/api/v1'
-          )
-        } else {
-          throw new Error('未提供模型配置，请确保客户端正确传递了模型信息')
-        }
-      } else {
-        // 使用默认配置
-        aiClient = createAIClientFromRequest(request)
-      }
-    } catch (clientError) {
-      console.error('[API] Failed to create AI client:', clientError)
+      const config = await getAIConfig(request as unknown as Request, userId, modelId)
+      console.log('[API] AI config:', {
+        hasApiKey: !!config.apiKey,
+        baseUrl: config.baseUrl,
+        model: config.model,
+      })
+
+      aiClient = new OpenAIClient(
+        config.apiKey,
+        config.model,
+        config.baseUrl
+      )
+    } catch (configError) {
+      console.error('[API] Failed to get AI config:', configError)
       return NextResponse.json(
-        { error: `${clientError instanceof Error ? clientError.message : '创建 AI 客户端失败'}` },
+        { error: `${configError instanceof Error ? configError.message : '获取 AI 配置失败'}` },
         { status: 500 }
       )
     }
@@ -119,69 +122,46 @@ export async function POST(request: NextRequest) {
         },
       ],
       temperature: 0.7,
-      maxTokens: 4000,
+      maxTokens: 100000,
     })
 
     console.log('[API] AI response received, length:', response.length)
 
-    // 将 Markdown 转换为 HTML
-    // 注意：需要先处理代码块，避免被其他规则影响
-    let htmlContent = response
-    
-    // 1. 先提取并保护代码块（避免被其他规则处理）
-    const codeBlocks: string[] = []
-    // 修复正则表达式：更准确地匹配代码块
-    htmlContent = htmlContent.replace(/```(\w+)?\s*\n([\s\S]*?)```/g, (match, lang, code) => {
-      const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`
-      const language = lang || 'plaintext'
-      // 转义 HTML 特殊字符
-      const escapedCode = code
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;')
-      codeBlocks.push(`<pre data-language="${language}"><code class="language-${language}">${escapedCode}</code></pre>`)
-      return placeholder
+    // 使用 marked 将 Markdown 转换为 HTML
+    let htmlContent = await marked.parse(response, {
+      async: true,
+      gfm: true,
+      breaks: true,
     })
+
+    // 后处理：修复常见的格式问题
+    // 1. 移除列表项内多余的 <p> 标签（marked 有时会在列表项内添加 <p>）
+    htmlContent = htmlContent.replace(/<li>\s*<p>(.*?)<\/p>\s*<\/li>/g, '<li>$1</li>')
     
-    // 2. 处理行内代码（单个反引号，但不是代码块的一部分）
-    htmlContent = htmlContent.replace(/`([^`\n]+)`/g, '<code>$1</code>')
+    // 2. 移除空的段落标签
+    htmlContent = htmlContent.replace(/<p>\s*<\/p>/g, '')
     
-    // 3. 处理标题
-    htmlContent = htmlContent
-      .replace(/^### (.*$)/gim, '<h3>$1</h3>')
-      .replace(/^## (.*$)/gim, '<h2>$1</h2>')
-      .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+    // 3. 修复错误的代码块格式（如果 AI 在列表项中使用了代码块）
+    // 将 <li>```xxx```</li> 转换为 <li><code>xxx</code></li>
+    htmlContent = htmlContent.replace(/<li>```([^`]+)```<\/li>/g, '<li><code>$1</code></li>')
     
-    // 4. 处理粗体和斜体
-    htmlContent = htmlContent
-      .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    // 4. 修复列表项中的错误代码块（带语言标识）
+    // 将 <li>```language\ncode\n```</li> 转换为 <li><code>code</code></li>
+    htmlContent = htmlContent.replace(/<li>```\w+\s*\n([^`]+)\n```<\/li>/g, '<li><code>$1</code></li>')
     
-    // 5. 处理列表
-    htmlContent = htmlContent
-      .replace(/^\* (.+$)/gim, '<li>$1</li>')
-      .replace(/(<li>[\s\S]*<\/li>)/, '<ul>$1</ul>')
-      .replace(/^\d+\. (.+$)/gim, '<li>$1</li>')
+    // 5. 确保代码块有正确的语言类名
+    htmlContent = htmlContent.replace(/<pre><code class="language-(\w+)">/g, '<pre><code class="language-$1">')
     
-    // 6. 处理段落（将连续的非 HTML 行包裹在 <p> 标签中）
-    htmlContent = htmlContent
-      .split('\n\n')
-      .map(para => {
-        para = para.trim()
-        if (!para) return ''
-        // 如果已经是 HTML 标签或占位符，不处理
-        if (para.startsWith('<') || para.startsWith('__CODE_BLOCK_')) return para
-        return `<p>${para}</p>`
-      })
-      .join('\n')
+    // 6. 确保标题后有适当的间距
+    htmlContent = htmlContent.replace(/(<\/h[1-6]>)(?!<)/g, '$1\n')
     
-    // 7. 恢复代码块
-    codeBlocks.forEach((block, index) => {
-      htmlContent = htmlContent.replace(`__CODE_BLOCK_${index}__`, block)
-    })
+    // 7. 确保列表前后有适当的间距
+    htmlContent = htmlContent.replace(/(<\/[uo]l>)(?!<)/g, '$1\n')
+    
+    // 8. 清理多余的换行符
+    htmlContent = htmlContent.replace(/\n{3,}/g, '\n\n')
+
+    console.log('[API] Markdown converted to HTML, length:', htmlContent.length)
 
     // 保存到数据库
     const db = getDbClient(request)
@@ -195,6 +175,63 @@ export async function POST(request: NextRequest) {
 
     try {
       console.log('[API] Updating content in database...')
+      
+      // 先清空旧的学习材料（闪卡、复习计划、费曼解释、康奈尔笔记）
+      // 因为重新生成内容后，旧的学习材料已经不适用了
+      console.log('[API] Clearing old learning materials...')
+      try {
+        // 查找对应的 knowledge_contents 记录
+        const existingContent = await db
+          .select()
+          .from(knowledgeContents)
+          .where(eq(knowledgeContents.outlineId, outlineId))
+          .limit(1)
+        
+        if (existingContent.length > 0) {
+          const contentId = existingContent[0].id
+          const userId = await (await import('@/lib/auth/get-user')).getUserIdOrDemo()
+          
+          // 导入需要的表
+          const { flashcards, reviewSchedules, feynmanExplanations, cornellNotes } = await import('@/db/schema')
+          
+          // 清空闪卡
+          await db.delete(flashcards).where(
+            and(
+              eq(flashcards.userId, userId),
+              eq(flashcards.contentId, contentId)
+            )
+          )
+          
+          // 清空复习计划
+          await db.delete(reviewSchedules).where(
+            and(
+              eq(reviewSchedules.userId, userId),
+              eq(reviewSchedules.contentId, contentId)
+            )
+          )
+          
+          // 清空费曼解释
+          await db.delete(feynmanExplanations).where(
+            and(
+              eq(feynmanExplanations.userId, userId),
+              eq(feynmanExplanations.contentId, contentId)
+            )
+          )
+          
+          // 清空康奈尔笔记
+          await db.delete(cornellNotes).where(
+            and(
+              eq(cornellNotes.userId, userId),
+              eq(cornellNotes.contentId, contentId)
+            )
+          )
+          
+          console.log('[API] Old learning materials cleared')
+        }
+      } catch (clearError) {
+        console.warn('[API] Failed to clear old learning materials:', clearError)
+        // 继续执行，不影响内容生成
+      }
       
       // 更新知识内容
       await db

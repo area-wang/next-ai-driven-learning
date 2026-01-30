@@ -14,11 +14,17 @@ import { AIGenerateDialog, type GenerateParams } from "@/components/editor/ai-ge
 import { TestQuestionDialog, type GenerateTestParams } from "@/components/editor/test-question-dialog"
 import { TestAnswerOverlay } from "@/components/test-answer/test-answer-overlay"
 import { DeleteConfirmDialog } from "@/components/editor/delete-confirm-dialog"
+import { OutlinePreviewDialog } from "@/components/editor/outline-preview-dialog"
+import { ConfiguredModelSelector } from "@/components/ai/configured-model-selector"
 import { type Editor } from "@tiptap/react"
-import { useAIConfig } from "@/hooks/use-ai-config"
 import { useAutoSave } from "@/hooks/use-auto-save"
-import { Sparkles, Loader2, ChevronLeft, BookOpen, ClipboardCheck } from "lucide-react"
+import { Sparkles, Loader2, ChevronLeft, ChevronRight, BookOpen, ClipboardCheck } from "lucide-react"
 import { useToast } from "@/components/ui/toast-container"
+import { LearningToolsSidebar } from "@/components/learning/learning-tools-sidebar"
+import { FeynmanConceptDialog } from "@/components/feynman/feynman-concept-dialog"
+import { FlashcardViewDialog } from "@/components/flashcards/flashcard-view-dialog"
+import { ReviewScheduleDialog } from "@/components/review/review-schedule-dialog"
+import { CornellNoteDialog } from "@/components/cornell/cornell-note-dialog"
 
 export default function PlanDetailPage() {
   const params = useParams()
@@ -63,7 +69,8 @@ export default function PlanDetailPage() {
   const editorInstanceRef = React.useRef<Editor | null>(null)
   const [isAIDialogOpen, setIsAIDialogOpen] = React.useState(false)
   const [aiParentDocId, setAIParentDocId] = React.useState<string | undefined>()
-  const [aiMode, setAIMode] = React.useState<'outline' | 'content'>('outline') // 新增：区分生成模式
+  const [aiParentDocTitle, setAIParentDocTitle] = React.useState<string | undefined>() // 新增：父文档标题
+  const [aiMode, setAIMode] = React.useState<'outline' | 'content'>('outline') // 新增:区分生成模式
   const [isTestDialogOpen, setIsTestDialogOpen] = React.useState(false)
   const [testParentDocId, setTestParentDocId] = React.useState<string | undefined>()
   const [isGenerating, setIsGenerating] = React.useState(false)
@@ -72,7 +79,22 @@ export default function PlanDetailPage() {
   const [isSimilarGenerating, setIsSimilarGenerating] = React.useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
   const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; title: string; childrenCount: number } | null>(null)
-  const { config, getApiKey } = useAIConfig()
+  const [isFeynmanDialogOpen, setIsFeynmanDialogOpen] = React.useState(false)
+  const [feynmanConcepts, setFeynmanConcepts] = React.useState<Array<{ name: string; description: string; difficulty: 'easy' | 'medium' | 'hard' }>>([])
+  const [isFeynmanGenerating, setIsFeynmanGenerating] = React.useState(false) // 费曼概念生成状态
+  const [rightSidebarMode, setRightSidebarMode] = React.useState<'outline' | 'tools'>('outline') // 右侧栏模式
+  const [rightSidebarCollapsed, setRightSidebarCollapsed] = React.useState(false) // 右侧栏折叠状态
+  const [isFlashcardDialogOpen, setIsFlashcardDialogOpen] = React.useState(false) // 闪卡查看对话框
+  const [isFlashcardGenerating, setIsFlashcardGenerating] = React.useState(false) // 闪卡生成状态
+  const [generatedFlashcardContentId, setGeneratedFlashcardContentId] = React.useState<string | null>(null) // 记录生成闪卡的文档ID
+  const [isReviewDialogOpen, setIsReviewDialogOpen] = React.useState(false) // 复习计划对话框
+  const [isCornellDialogOpen, setIsCornellDialogOpen] = React.useState(false) // 康奈尔笔记对话框
+  const [selectedModelId, setSelectedModelId] = React.useState<string>('') // 选中的模型 ID
+  // 新增：子文档大纲预览相关状态
+  const [isOutlinePreviewOpen, setIsOutlinePreviewOpen] = React.useState(false)
+  const [previewOutlines, setPreviewOutlines] = React.useState<any[]>([])
+  const [isRegeneratingOutline, setIsRegeneratingOutline] = React.useState(false)
+  const [currentGenerateParams, setCurrentGenerateParams] = React.useState<any>(null)
   const toast = useToast()
   
   // 文档数据结构：包含标题和内容
@@ -241,6 +263,12 @@ export default function PlanDetailPage() {
   const handleSimilarQuestionClick = React.useCallback(async (questionIndex: number) => {
     if (isSimilarGenerating) return
     
+    // 检查是否选择了模型
+    if (!selectedModelId) {
+      toast.warning('请先选择 AI 模型')
+      return
+    }
+    
     setIsSimilarGenerating(true)
     try {
       // 直接从编辑器实例获取最新内容
@@ -289,24 +317,11 @@ export default function PlanDetailPage() {
         return
       }
 
-      // 从配置获取模型信息并添加到请求头
-      const { getDefaultModel } = await import('@/lib/ai/config')
-      const { addModelConfigToHeaders } = await import('@/lib/ai/config-client')
-      const modelConfig = getDefaultModel()
-      
-      if (!modelConfig) {
-        toast.warning('未配置可用的 AI 模型，请前往设置页面配置')
-        return
-      }
-
-      const headers = addModelConfigToHeaders(
-        { 'Content-Type': 'application/json' },
-        modelConfig
-      )
-
       const response = await fetch('/api/test-answer/generate-similar', {
         method: 'POST',
-        headers,
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           originalQuestion: {
             type: questionType,
@@ -314,6 +329,7 @@ export default function PlanDetailPage() {
             difficulty: 'medium',
             topic: questionText.substring(0, 50),
           },
+          modelId: selectedModelId, // 传递选中的模型 ID
         }),
       })
 
@@ -420,7 +436,7 @@ export default function PlanDetailPage() {
     } finally {
       setIsSimilarGenerating(false)
     }
-  }, [isSimilarGenerating, editorInstanceRef])
+  }, [isSimilarGenerating, selectedModelId, editorInstanceRef, toast])
 
   // 切换文档时保存到 localStorage
   const handleDocumentSelect = React.useCallback((docId: string) => {
@@ -553,32 +569,61 @@ export default function PlanDetailPage() {
     }
   }, [activeDocId, documents, setAndSaveActiveDocId, deleteTarget, toast])
 
+  // 辅助函数：转换大纲为文档树结构
+  const convertOutlineToDocuments = React.useCallback((
+    outlineItems: any[]
+  ): { nodes: DocumentNode[]; contents: Record<string, { title: string; content: string; description?: string }> } => {
+    const nodes: DocumentNode[] = []
+    const contents: Record<string, { title: string; content: string; description?: string }> = {}
+
+    outlineItems.forEach((item) => {
+      // 创建文档节点
+      const node: DocumentNode = {
+        id: item.id,
+        title: item.title,
+        isTestDocument: item.isTestDocument || false,
+      }
+
+      // 处理子项
+      if (item.children && item.children.length > 0) {
+        const childResult = convertOutlineToDocuments(item.children)
+        node.children = childResult.nodes
+        Object.assign(contents, childResult.contents)
+      }
+
+      nodes.push(node)
+      contents[item.id] = {
+        title: item.title,
+        content: item.content || `<h2>${item.title}</h2><p>${item.description || ''}</p>`,
+        description: item.description,
+      }
+    })
+
+    return { nodes, contents }
+  }, [])
+
   // AI 生成处理函数
   const handleAIGenerate = React.useCallback(async (params: GenerateParams) => {
     setIsGenerating(true)
     try {
-      // 使用 fetchWithModel 辅助函数
-      const { fetchWithModel } = await import('@/lib/ai/fetch-with-model')
-
       // 判断是生成章节内容还是生成大纲
       if (params.currentDocId) {
         // 生成章节内容模式
-        const response = await fetchWithModel(
-          '/api/learning-content/generate',
-          params.modelId,
-          {
-            method: 'POST',
-            body: JSON.stringify({
-              outlineId: params.currentDocId,
-              topic: planInfo.topic,
-              chapterTitle: params.topic,
-              goal: params.goal,
-              additionalContext: params.additionalContext,
-              level: params.level,
-              modelId: params.modelId, // 传递模型ID
-            }),
-          }
-        )
+        const response = await fetch('/api/learning-content/generate', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            outlineId: params.currentDocId,
+            topic: planInfo.topic,
+            chapterTitle: params.topic,
+            goal: params.goal,
+            additionalContext: params.additionalContext,
+            level: params.level,
+            modelId: params.modelId, // 传递模型ID给后端
+          }),
+        })
 
         if (!response.ok) {
           const error = await response.json() as { error?: string }
@@ -597,115 +642,49 @@ export default function PlanDetailPage() {
         }))
 
         toast.success('章节内容生成成功！')
+        setIsAIDialogOpen(false)
       } else {
-        // 生成大纲模式
-        const response = await fetchWithModel(
-          '/api/learning-outline/generate',
-          params.modelId,
-          {
-            method: 'POST',
-            body: JSON.stringify({
-              planId, // 添加 planId
-              parentId: params.parentDocId, // 添加 parentId
-              topic: params.topic,
-              goal: params.goal,
-              level: params.level,
-              modelId: params.modelId, // 传递模型ID
-            }),
-          }
-        )
+        // 生成大纲模式 - 显示预览对话框
+        const response = await fetch('/api/learning-outline/generate', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            planId, // 添加 planId
+            parentId: params.parentDocId, // 添加 parentId
+            topic: params.topic,
+            goal: params.goal,
+            level: params.level,
+            additionalContext: params.additionalContext, // 添加补充描述
+            modelId: params.modelId, // 传递模型ID给后端
+            depth: params.depth, // 传递层级深度
+          }),
+        })
 
         if (!response.ok) {
-          const error = await response.json() as { error?: string }
-          throw new Error(error.error || 'AI 生成失败')
+          const error = await response.json() as { error?: string; details?: string; rawResponse?: string }
+          console.error('[AI Generate] API error:', error)
+          
+          // 构建详细的错误信息
+          let errorMessage = error.error || 'AI 生成失败'
+          if (error.details) {
+            errorMessage += `\n详情: ${error.details}`
+          }
+          if (error.rawResponse) {
+            console.error('[AI Generate] Raw AI response:', error.rawResponse)
+          }
+          
+          throw new Error(errorMessage)
         }
 
         const data = await response.json() as { outlines: any[] }
         
-        // 转换 AI 生成的大纲为文档树结构（使用数据库返回的 ID）
-      const convertOutlineToDocuments = (
-        outlineItems: any[]
-      ): { nodes: DocumentNode[]; contents: Record<string, { title: string; content: string; description?: string }> } => {
-        const nodes: DocumentNode[] = []
-        const contents: Record<string, { title: string; content: string; description?: string }> = {}
-
-        outlineItems.forEach((item) => {
-          // 使用数据库返回的 ID
-          const docId = item.id
-          
-          // 生成文档内容（HTML格式）
-          let htmlContent = `<h2>${item.title}</h2>`
-          if (item.description) {
-            htmlContent += `<p>${item.description}</p>`
-          }
-          if (item.estimatedTime) {
-            htmlContent += `<p><strong>预计学习时间：</strong>${item.estimatedTime} 分钟</p>`
-          }
-
-          // 创建文档节点
-          const node: DocumentNode = {
-            id: docId,
-            title: item.title,
-          }
-
-          // 处理子项
-          if (item.children && item.children.length > 0) {
-            const childResult = convertOutlineToDocuments(item.children)
-            node.children = childResult.nodes
-            Object.assign(contents, childResult.contents)
-          }
-
-          nodes.push(node)
-          contents[docId] = {
-            title: item.title,
-            content: htmlContent,
-            description: item.description,
-          }
-        })
-
-        return { nodes, contents }
-      }
-
-      const { nodes, contents } = convertOutlineToDocuments(data.outlines)
-
-      // 更新文档树和内容
-      if (params.parentDocId) {
-        // 添加到指定父文档下
-        const addToParent = (docNodes: DocumentNode[]): DocumentNode[] => {
-          return docNodes.map((node) => {
-            if (node.id === params.parentDocId) {
-              return {
-                ...node,
-                children: [...(node.children || []), ...nodes],
-              }
-            }
-            if (node.children) {
-              return {
-                ...node,
-                children: addToParent(node.children),
-              }
-            }
-            return node
-          })
-        }
-        setDocuments((prev) => addToParent(prev))
-      } else {
-        // 添加到根级别
-        setDocuments((prev) => [...prev, ...nodes])
-      }
-
-      // 添加文档内容
-      setDocumentContents((prev) => ({
-        ...prev,
-        ...contents,
-      }))
-
-      // 切换到第一个生成的文档
-      if (nodes.length > 0) {
-        setAndSaveActiveDocId(nodes[0].id)
-      }
-
-      toast.success('AI 生成成功！')
+        // 保存生成参数和大纲数据，打开预览对话框
+        setCurrentGenerateParams(params)
+        setPreviewOutlines(data.outlines)
+        setIsAIDialogOpen(false)
+        setIsOutlinePreviewOpen(true)
       }
     } catch (error) {
       console.error('AI generation failed:', error)
@@ -713,14 +692,148 @@ export default function PlanDetailPage() {
     } finally {
       setIsGenerating(false)
     }
-  }, [planInfo, setAndSaveActiveDocId, planId, activeDocId, documentContents, documents, toast])
+  }, [planInfo, planId, toast])
+
+  // 接受大纲并应用
+  const handleAcceptOutline = React.useCallback((mode: 'replace' | 'merge') => {
+    if (!previewOutlines || previewOutlines.length === 0) {
+      toast.error('没有可应用的大纲')
+      return
+    }
+
+    // 转换大纲为文档树结构
+    const { nodes, contents } = convertOutlineToDocuments(previewOutlines)
+    
+    if (currentGenerateParams?.parentDocId) {
+      // 有父文档：在父文档下添加子文档
+      if (mode === 'replace') {
+        // 覆盖模式：删除所有已有子文档
+        const replaceChildren = (docNodes: DocumentNode[]): DocumentNode[] => {
+          return docNodes.map((node) => {
+            if (node.id === currentGenerateParams.parentDocId) {
+              return {
+                ...node,
+                children: nodes, // 直接替换
+              }
+            }
+            if (node.children) {
+              return {
+                ...node,
+                children: replaceChildren(node.children),
+              }
+            }
+            return node
+          })
+        }
+        setDocuments((prev) => replaceChildren(prev))
+      } else {
+        // 智能去重模式：只添加不重复的子文档
+        const mergeChildren = (docNodes: DocumentNode[]): DocumentNode[] => {
+          return docNodes.map((node) => {
+            if (node.id === currentGenerateParams.parentDocId) {
+              const existingTitles = new Set((node.children || []).map(c => c.title))
+              const newNodes = nodes.filter(n => !existingTitles.has(n.title))
+              return {
+                ...node,
+                children: [...(node.children || []), ...newNodes],
+              }
+            }
+            if (node.children) {
+              return {
+                ...node,
+                children: mergeChildren(node.children),
+              }
+            }
+            return node
+          })
+        }
+        setDocuments((prev) => mergeChildren(prev))
+      }
+    } else {
+      // 根级别
+      if (mode === 'replace') {
+        setDocuments(nodes)
+      } else {
+        const existingTitles = new Set(documents.map(d => d.title))
+        const newNodes = nodes.filter(n => !existingTitles.has(n.title))
+        setDocuments((prev) => [...prev, ...newNodes])
+      }
+    }
+    
+    // 添加文档内容
+    setDocumentContents((prev) => ({
+      ...prev,
+      ...contents,
+    }))
+    
+    // 切换到第一个生成的文档
+    if (nodes.length > 0) {
+      setAndSaveActiveDocId(nodes[0].id)
+    }
+    
+    setIsOutlinePreviewOpen(false)
+    toast.success('大纲已应用！')
+  }, [previewOutlines, currentGenerateParams, documents, setAndSaveActiveDocId, toast, convertOutlineToDocuments])
+
+  // 重新生成大纲
+  const handleRegenerateOutline = React.useCallback(async (feedback: string) => {
+    if (!feedback.trim() || !currentGenerateParams) return
+    
+    setIsRegeneratingOutline(true)
+    try {
+      const response = await fetch('/api/learning-outline/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          planId,
+          parentId: currentGenerateParams.parentDocId,
+          topic: currentGenerateParams.topic,
+          goal: currentGenerateParams.goal,
+          level: currentGenerateParams.level,
+          modelId: currentGenerateParams.modelId,
+          depth: currentGenerateParams.depth,
+          additionalContext: currentGenerateParams.additionalContext 
+            ? `${currentGenerateParams.additionalContext}\n\n用户反馈：${feedback}`
+            : `用户反馈：${feedback}`,
+        }),
+      })
+      
+      if (!response.ok) {
+        const error = await response.json() as { error?: string }
+        throw new Error(error.error || '重新生成失败')
+      }
+      
+      const data = await response.json() as { outlines: any[] }
+      setPreviewOutlines(data.outlines)
+      toast.success('大纲已重新生成')
+    } catch (error) {
+      console.error('Regenerate failed:', error)
+      toast.error(error instanceof Error ? error.message : '重新生成失败')
+    } finally {
+      setIsRegeneratingOutline(false)
+    }
+  }, [currentGenerateParams, planId, toast])
 
   // 打开 AI 生成对话框
   const openAIDialog = React.useCallback((mode: 'outline' | 'content' = 'outline', parentId?: string) => {
     setAIMode(mode)
     setAIParentDocId(parentId)
+    
+    // 查找父文档标题
+    if (parentId) {
+      for (const doc of documents) {
+        const found = findDocById(doc, parentId)
+        if (found) {
+          setAIParentDocTitle(found.title)
+          break
+        }
+      }
+    } else {
+      setAIParentDocTitle(undefined)
+    }
+    
     setIsAIDialogOpen(true)
-  }, [])
+  }, [documents, findDocById])
 
   // 打开测试题生成对话框
   const openTestDialog = React.useCallback((parentId?: string) => {
@@ -735,26 +848,24 @@ export default function PlanDetailPage() {
       // 获取当前文档内容作为上下文
       const currentContent = activeDocId ? documentContents[activeDocId]?.content : undefined
 
-      // 使用 fetchWithModel 辅助函数
-      const { fetchWithModel } = await import('@/lib/ai/fetch-with-model')
-      const response = await fetchWithModel(
-        '/api/test-questions/generate',
-        params.modelId,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            topic: params.topic,
-            planTopic: planInfo.topic, // 添加学习计划主题
-            planGoal: planInfo.goal, // 添加学习计划目标
-            currentContent, // 添加当前章节内容
-            additionalContext: params.additionalContext, // 添加用户自定义描述
-            difficulty: params.difficulty,
-            questionCount: params.questionCount,
-            questionTypes: params.questionTypes,
-            modelId: params.modelId, // 传递模型ID
-          }),
-        }
-      )
+      // 直接调用 API，让后端处理配置
+      const response = await fetch('/api/test-questions/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          topic: params.topic,
+          planTopic: planInfo.topic, // 添加学习计划主题
+          planGoal: planInfo.goal, // 添加学习计划目标
+          currentContent, // 添加当前章节内容
+          additionalContext: params.additionalContext, // 添加用户自定义描述
+          difficulty: params.difficulty,
+          questionCount: params.questionCount,
+          questionTypes: params.questionTypes,
+          modelId: params.modelId, // 传递模型ID给后端
+        }),
+      })
 
       if (!response.ok) {
         const error = await response.json() as { error?: string }
@@ -1125,7 +1236,113 @@ export default function PlanDetailPage() {
     } finally {
       setIsTestGenerating(false)
     }
-  }, [config, getApiKey, activeDocId, setAndSaveActiveDocId, documentContents, editorInstanceRef, planInfo, toast])
+  }, [activeDocId, setAndSaveActiveDocId, documentContents, editorInstanceRef, planInfo, toast])
+
+  // 处理学习工具生成
+  const handleLearningToolGenerate = React.useCallback(async (toolType: string) => {
+    if (!activeDocId || !currentDoc.content) {
+      toast.warning('请先选择一个文档')
+      return
+    }
+
+    try {
+      switch (toolType) {
+        case 'review': {
+          // 创建复习计划
+          const reviewResponse = await fetch('/api/review/schedule', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contentId: activeDocId,
+            }),
+          })
+          
+          if (!reviewResponse.ok) {
+            const errorData = await reviewResponse.json() as { error?: string }
+            throw new Error(errorData.error || '创建复习计划失败')
+          }
+          
+          const reviewData = await reviewResponse.json() as { schedules: any[]; message: string }
+          toast.success(reviewData.message || '复习计划已创建')
+          break
+        }
+
+        default:
+          toast.warning('未知的学习工具类型')
+      }
+    } catch (error) {
+      console.error('生成失败:', error)
+      toast.error(error instanceof Error ? error.message : '生成失败，请重试')
+    }
+  }, [activeDocId, currentDoc, toast])
+
+  // 处理打开费曼学习法对话框
+  const handleOpenFeynmanDialog = React.useCallback(async () => {
+    if (!currentDoc.content || currentDoc.content.trim().length < 50) {
+      toast.warning('文档内容太少，请先添加更多内容')
+      return
+    }
+
+    // 设置 loading 状态
+    setIsFeynmanGenerating(true)
+
+    try {
+      // 先清空旧的概念，确保每次都是重新生成
+      setFeynmanConcepts([])
+      
+      // 清除旧的费曼解释历史记录（因为文档内容已改变，旧的解释不再适用）
+      try {
+        await fetch(`/api/feynman/clear?contentId=${activeDocId}`, {
+          method: 'DELETE',
+        })
+      } catch (error) {
+        console.warn('清除旧的费曼解释失败:', error)
+        // 不影响后续流程
+      }
+
+      toast.info('正在从当前文档内容中提取核心概念...')
+      
+      // 每次都重新从当前文档内容中提取概念
+      const conceptsResponse = await fetch('/api/feynman/generate-concepts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: currentDoc.content,
+          title: currentDoc.title,
+        }),
+      })
+
+      if (!conceptsResponse.ok) {
+        throw new Error('提取概念失败')
+      }
+
+      const conceptsData = await conceptsResponse.json() as { 
+        success: boolean
+        data: { 
+          concepts: Array<{ 
+            name: string
+            description: string
+            difficulty: 'easy' | 'medium' | 'hard'
+          }> 
+        } 
+      }
+
+      if (conceptsData.success && conceptsData.data.concepts.length > 0) {
+        // 设置新提取的概念
+        setFeynmanConcepts(conceptsData.data.concepts)
+        setIsFeynmanDialogOpen(true)
+        toast.success(`成功提取 ${conceptsData.data.concepts.length} 个核心概念`)
+      } else {
+        toast.error('未能提取到核心概念')
+      }
+    } catch (error) {
+      console.error('提取概念失败:', error)
+      toast.error('提取概念失败，请重试')
+    } finally {
+      // 清除 loading 状态
+      setIsFeynmanGenerating(false)
+    }
+  }, [activeDocId, currentDoc, toast])
 
   return (
     <div className="h-screen flex flex-col bg-gradient-to-br from-teal-50 via-cyan-50 to-blue-50">
@@ -1146,63 +1363,72 @@ export default function PlanDetailPage() {
           </div>
           
           {/* 按钮组 */}
-          <div className="flex items-center gap-2">
-            {/* 答题按钮（仅测试题文档显示） */}
-            {isTestDocument && (
+          <div className="flex items-center gap-3">
+            {/* 模型选择器 */}
+            <ConfiguredModelSelector
+              showLabel={false}
+              value={selectedModelId}
+              onChange={setSelectedModelId}
+            />
+            
+            <div className="flex items-center gap-2">
+              {/* 答题按钮（仅测试题文档显示） */}
+              {isTestDocument && (
+                <button
+                  type="button"
+                  onClick={() => setIsAnswerMode(true)}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-purple-500 text-white text-sm font-medium hover:bg-purple-600 transition-colors cursor-pointer"
+                >
+                  <ClipboardCheck className="w-4 h-4" />
+                  开始答题
+                </button>
+              )}
+
+              {/* 生成测试题按钮 */}
               <button
                 type="button"
-                onClick={() => setIsAnswerMode(true)}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-purple-500 text-white text-sm font-medium hover:bg-purple-600 transition-colors cursor-pointer"
+                onClick={() => openTestDialog()}
+                disabled={isTestGenerating}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
-                <ClipboardCheck className="w-4 h-4" />
-                开始答题
+                {isTestGenerating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    生成中...
+                  </>
+                ) : (
+                  <>
+                    <BookOpen className="w-4 h-4" />
+                    生成测试题
+                  </>
+                )}
               </button>
-            )}
 
-            {/* 生成测试题按钮 */}
-            <button
-              type="button"
-              onClick={() => openTestDialog()}
-              disabled={isTestGenerating}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-            >
-              {isTestGenerating ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  生成中...
-                </>
-              ) : (
-                <>
-                  <BookOpen className="w-4 h-4" />
-                  生成测试题
-                </>
-              )}
-            </button>
-
-            {/* AI 生成按钮 */}
-            <button
-              type="button"
-              onClick={() => openAIDialog('content')}
-              disabled={isGenerating || !activeDocId}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-teal-500 text-white text-sm font-medium hover:bg-teal-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-            >
-              {isGenerating ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  生成中...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4" />
-                  AI 生成
-                </>
-              )}
-            </button>
+              {/* AI 生成按钮 */}
+              <button
+                type="button"
+                onClick={() => openAIDialog('content')}
+                disabled={isGenerating || !activeDocId}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-teal-500 text-white text-sm font-medium hover:bg-teal-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    生成中...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    AI 生成
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* 主体区域：文档树 + 编辑器 + 大纲 */}
+      {/* 主体区域：文档树 + 编辑器 + 右侧栏（大纲/学习工具） */}
       <div className="flex-1 flex overflow-hidden">
         {/* 左侧文档树 */}
         <DocumentTree
@@ -1228,8 +1454,76 @@ export default function PlanDetailPage() {
           onSimilarQuestionClick={handleSimilarQuestionClick}
         />
 
-        {/* 右侧大纲 */}
-        <ContentOutline editor={editorInstanceRef.current} />
+        {/* 右侧栏：大纲或学习工具（可切换） */}
+        <div className="flex flex-col overflow-hidden transition-all duration-300" style={{ width: rightSidebarCollapsed ? '48px' : '320px' }}>
+          {/* 切换按钮 - 测试题文档只显示大纲 */}
+          {!isTestDocument && !rightSidebarCollapsed && (
+            <div className="flex-shrink-0 border-b bg-white/80">
+              <div className="flex">
+                <button
+                  onClick={() => setRightSidebarMode('outline')}
+                  className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+                    rightSidebarMode === 'outline'
+                      ? 'bg-teal-50 text-teal-700 border-b-2 border-teal-500'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  📋 大纲
+                </button>
+                <button
+                  onClick={() => setRightSidebarMode('tools')}
+                  className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+                    rightSidebarMode === 'tools'
+                      ? 'bg-teal-50 text-teal-700 border-b-2 border-teal-500'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  🛠️ 学习工具
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 折叠按钮 */}
+          <div className="flex-shrink-0 border-b bg-white/80 px-4 py-3 flex items-center justify-between">
+            {!rightSidebarCollapsed && (
+              <h2 className="font-semibold text-[var(--color-text)]">
+                {isTestDocument || rightSidebarMode === 'outline' ? '大纲' : '学习工具'}
+              </h2>
+            )}
+            <button
+              type="button"
+              onClick={() => setRightSidebarCollapsed(!rightSidebarCollapsed)}
+              className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer ml-auto"
+              aria-label={rightSidebarCollapsed ? "展开右侧栏" : "收起右侧栏"}
+            >
+              <ChevronRight className={`w-4 h-4 text-[var(--color-text)] transition-transform ${rightSidebarCollapsed ? 'rotate-180' : ''}`} />
+            </button>
+          </div>
+
+          {/* 内容区域 - 测试题文档只显示大纲 */}
+          {!rightSidebarCollapsed && (
+            <div className="flex-1 overflow-hidden bg-white/60 backdrop-blur-sm">
+              {isTestDocument || rightSidebarMode === 'outline' ? (
+                <ContentOutline editor={editorInstanceRef.current} />
+              ) : (
+                <LearningToolsSidebar
+                  contentId={activeDocId}
+                  documentContent={currentDoc.content}
+                  documentTitle={currentDoc.title}
+                  selectedModelId={selectedModelId}
+                  onToolGenerate={handleLearningToolGenerate}
+                  onOpenFlashcardDialog={() => setIsFlashcardDialogOpen(true)}
+                  onOpenFeynmanDialog={handleOpenFeynmanDialog}
+                  onOpenReviewDialog={() => setIsReviewDialogOpen(true)}
+                  onOpenCornellDialog={() => setIsCornellDialogOpen(true)}
+                  onFlashcardGeneratingChange={setIsFlashcardGenerating}
+                  isFeynmanGenerating={isFeynmanGenerating}
+                />
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* AI 生成对话框 */}
@@ -1238,6 +1532,7 @@ export default function PlanDetailPage() {
         onClose={() => setIsAIDialogOpen(false)}
         onGenerate={handleAIGenerate}
         parentDocId={aiParentDocId}
+        parentDocTitle={aiParentDocTitle}
         currentDoc={aiMode === 'content' && activeDocId ? {
           id: activeDocId,
           title: currentDoc.title,
@@ -1261,6 +1556,7 @@ export default function PlanDetailPage() {
           documentContent={currentDoc.content}
           documentId={activeDocId}
           planId={planId}
+          modelId={selectedModelId}
           onClose={() => setIsAnswerMode(false)}
           onUpdateContent={handleContentChange}
         />
@@ -1277,6 +1573,80 @@ export default function PlanDetailPage() {
           onConfirm={confirmDelete}
           documentTitle={deleteTarget.title}
           childrenCount={deleteTarget.childrenCount}
+        />
+      )}
+
+      {/* 费曼学习法对话框 */}
+      {/* 费曼学习法对话框 - 条件渲染 */}
+      {isFeynmanDialogOpen && feynmanConcepts.length > 0 && (
+        <FeynmanConceptDialog
+          isOpen={isFeynmanDialogOpen}
+          onClose={() => setIsFeynmanDialogOpen(false)}
+          concepts={feynmanConcepts}
+          contentId={activeDocId}
+          onSuccess={() => {
+            toast.success('费曼解释已保存')
+          }}
+        />
+      )}
+
+      {/* 闪卡查看对话框 - 条件渲染 */}
+      {isFlashcardDialogOpen && (
+        <FlashcardViewDialog
+          isOpen={isFlashcardDialogOpen}
+          onClose={() => {
+            setIsFlashcardDialogOpen(false)
+            setGeneratedFlashcardContentId(null)
+            setIsFlashcardGenerating(false)
+          }}
+          contentId={generatedFlashcardContentId || activeDocId}
+          isGenerating={isFlashcardGenerating}
+        />
+      )}
+
+      {/* 复习计划对话框 - 条件渲染 */}
+      {isReviewDialogOpen && (
+        <ReviewScheduleDialog
+          isOpen={isReviewDialogOpen}
+          onClose={() => setIsReviewDialogOpen(false)}
+          outlineId={activeDocId}
+        />
+      )}
+
+      {/* 康奈尔笔记对话框 - 条件渲染 */}
+      {isCornellDialogOpen && (
+        <CornellNoteDialog
+          isOpen={isCornellDialogOpen}
+          onClose={() => setIsCornellDialogOpen(false)}
+          contentId={activeDocId}
+          selectedModelId={selectedModelId}
+        />
+      )}
+
+      {/* 子文档大纲预览对话框 */}
+      {isOutlinePreviewOpen && (
+        <OutlinePreviewDialog
+          isOpen={isOutlinePreviewOpen}
+          onClose={() => {
+            setIsOutlinePreviewOpen(false)
+            setPreviewOutlines([])
+            setCurrentGenerateParams(null)
+          }}
+          onAccept={handleAcceptOutline}
+          onRegenerate={handleRegenerateOutline}
+          outlines={previewOutlines}
+          isRegenerating={isRegeneratingOutline}
+          parentDocTitle={aiParentDocTitle}
+          hasExistingChildren={(() => {
+            if (!currentGenerateParams?.parentDocId) return false
+            for (const doc of documents) {
+              const found = findDocById(doc, currentGenerateParams.parentDocId)
+              if (found && found.children && found.children.length > 0) {
+                return true
+              }
+            }
+            return false
+          })()}
         />
       )}
     </div>

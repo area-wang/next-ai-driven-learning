@@ -1,15 +1,16 @@
 /**
  * AI 对话 API
- * 支持流式响应和多个 LLM 提供商
+ * 支持流式响应，使用统一的配置逻辑
  */
 
 import { NextRequest } from 'next/server'
-import { createAIClient, type AIMessage, type AIProvider } from '@/lib/ai/client'
+import { type AIMessage } from '@/lib/ai/client'
+import { getAIConfig } from '@/lib/ai/get-ai-config'
+import { getCurrentUserId } from '@/lib/auth/get-user'
 
 interface ChatRequest {
   messages: AIMessage[]
-  provider?: AIProvider
-  model?: string
+  modelId?: string // 可选的模型 ID，如果不提供则使用默认模型
   temperature?: number
   maxTokens?: number
   stream?: boolean
@@ -18,7 +19,7 @@ interface ChatRequest {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as ChatRequest
-    const { messages, provider = 'openai', model, temperature, maxTokens, stream = true } = body
+    const { messages, modelId, temperature, maxTokens, stream = true } = body
 
     if (!messages || messages.length === 0) {
       return new Response(
@@ -27,74 +28,115 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 根据提供商获取对应的 API key
-    // 优先使用客户端传递的 API key（从 localStorage），其次使用服务器环境变量
-    let apiKey: string | undefined
-    
-    // 从请求头获取客户端 API key
-    const clientApiKey = request.headers.get('x-api-key')
-    
-    switch (provider) {
-      case 'openai':
-        apiKey = clientApiKey || process.env.OPENAI_API_KEY
-        break
-      case 'deepseek':
-        apiKey = clientApiKey || process.env.DEEPSEEK_API_KEY
-        break
-      case 'gemini':
-        apiKey = clientApiKey || process.env.GEMINI_API_KEY
-        break
-      case 'claude':
-        apiKey = clientApiKey || process.env.CLAUDE_API_KEY
-        break
-      case 'cloudflare':
-        // Cloudflare AI 不需要 API key，使用 binding
-        break
-      default:
-        return new Response(
-          JSON.stringify({ error: `不支持的提供商: ${provider}` }),
-          { status: 400, headers: { 'Content-Type': 'application/json' } }
-        )
+    // 获取当前用户 ID
+    const userId = await getCurrentUserId()
+    if (!userId) {
+      return new Response(
+        JSON.stringify({ error: '未登录' }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } }
+      )
     }
 
-    // 创建 AI 客户端
-    const aiClient = createAIClient({
-      provider,
-      apiKey,
-      model,
-      ai: (request as any).env?.AI, // Cloudflare AI binding
-    })
+    // 获取 AI 配置（使用统一配置逻辑）
+    console.log('[AI Chat API] 获取 AI 配置...')
+    let config
+    try {
+      config = await getAIConfig(request as unknown as Request, userId, modelId)
+      console.log('[AI Chat API] AI 配置:', {
+        hasApiKey: !!config.apiKey,
+        baseUrl: config.baseUrl,
+        model: config.model,
+      })
+    } catch (configError) {
+      console.error('[AI Chat API] 获取 AI 配置失败:', configError)
+      return new Response(
+        JSON.stringify({ error: configError instanceof Error ? configError.message : '获取 AI 配置失败' }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
 
     if (stream) {
       // 流式响应
-      const aiStream = await aiClient.chatStream({
-        messages,
-        temperature,
-        maxTokens,
-      })
+      console.log('[AI Chat API] 开始流式响应...')
+      try {
+        const response = await fetch(`${config.baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${config.apiKey}`,
+            ...(config.baseUrl.includes('openrouter.ai') ? {
+              'HTTP-Referer': 'https://ai-learning-platform.com',
+              'X-Title': 'AI Learning Platform'
+            } : {})
+          },
+          body: JSON.stringify({
+            model: config.model,
+            messages,
+            temperature: temperature || 0.7,
+            max_tokens: maxTokens || 100000,
+            stream: true,
+          }),
+        })
 
-      return new Response(aiStream, {
-        headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
-        },
-      })
+        if (!response.ok) {
+          const errorText = await response.text()
+          console.error('[AI Chat API] AI API 错误:', response.status, errorText)
+          throw new Error(`AI API error: ${response.statusText}`)
+        }
+
+        console.log('[AI Chat API] 流式响应创建成功')
+        
+        // 直接返回原始的 SSE 流
+        return new Response(response.body, {
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+          },
+        })
+      } catch (streamError) {
+        console.error('[AI Chat API] 流式响应错误:', streamError)
+        throw streamError
+      }
     } else {
       // 非流式响应
-      const response = await aiClient.chat({
-        messages,
-        temperature,
-        maxTokens,
+      console.log('[AI Chat API] 开始非流式响应...')
+      const response = await fetch(`${config.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${config.apiKey}`,
+          ...(config.baseUrl.includes('openrouter.ai') ? {
+            'HTTP-Referer': 'https://ai-learning-platform.com',
+            'X-Title': 'AI Learning Platform'
+          } : {})
+        },
+        body: JSON.stringify({
+          model: config.model,
+          messages,
+          temperature: temperature || 0.7,
+          max_tokens: maxTokens || 100000,
+          stream: false,
+        }),
       })
 
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('[AI Chat API] AI API 错误:', response.status, errorText)
+        throw new Error(`AI API error: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+      const content = (data as any).choices?.[0]?.message?.content || ''
+
+      console.log('[AI Chat API] 非流式响应成功，长度:', content.length)
       return new Response(
-        JSON.stringify({ response }),
+        JSON.stringify({ response: content }),
         { headers: { 'Content-Type': 'application/json' } }
       )
     }
   } catch (error) {
-    console.error('AI chat error:', error)
+    console.error('[AI Chat API] 错误:', error)
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'AI 服务错误' }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }

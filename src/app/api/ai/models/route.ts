@@ -1,19 +1,24 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { getDbClient } from '@/lib/db-connection'
+import { users, aiProviders } from '@/db/schema'
+import { eq, and } from 'drizzle-orm'
+import { getCurrentUserId } from '@/lib/auth/get-user'
+import { getStaticProviderModels } from '@/lib/ai/static-provider-models'
 
 export const runtime = 'nodejs'
 
-// 厂商映射配置 - 将 OpenRouter 的厂商 ID 映射为中文显示名称
+// 厂商映射配置 - 将厂商 ID 映射为中文显示名称
 const PROVIDER_MAP: Record<string, string> = {
   'openai': 'OpenAI',
   'google': 'Gemini',
   'deepseek': 'DeepSeek',
   'anthropic': 'Anthropic',
-  'z-ai': '智谱AI',  // 智谱AI 在 OpenRouter 中的实际 ID
+  'z-ai': '智谱AI',
   'qwen': 'Qwen',
-  'moonshotai': 'Kimi',  // Kimi 在 OpenRouter 中的实际 ID
+  'moonshotai': 'Kimi',
   'minimax': 'MiniMax',
   'bytedance': '豆包',
-  'bytedance-seed': '豆包',  // 字节的 Seed 系列
+  'bytedance-seed': '豆包',
 }
 
 // 需要过滤的厂商前缀
@@ -51,9 +56,90 @@ export interface AIModel {
 /**
  * 从 OpenRouter 获取模型列表并处理成我们需要的格式
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    // 从 OpenRouter 获取模型列表
+    // 获取用户 ID 和配置模式
+    const userId = await getCurrentUserId()
+    if (!userId) {
+      return NextResponse.json({ error: '未登录' }, { status: 401 })
+    }
+
+    const db = getDbClient(request as unknown as Request)
+    if (!db) {
+      return NextResponse.json({ error: '数据库连接失败' }, { status: 500 })
+    }
+
+    // 获取用户的配置模式
+    const user = await db
+      .select({ configMode: users.configMode })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1)
+
+    const configMode = user[0]?.configMode || 'openrouter'
+
+    // 根据配置模式返回不同的模型列表
+    if (configMode === 'independent') {
+      // 独立厂商模式：从数据库读取已配置且启用的厂商，返回这些厂商的所有可用模型
+      const enabledProviders = await db
+        .select()
+        .from(aiProviders)
+        .where(
+          and(
+            eq(aiProviders.userId, userId),
+            eq(aiProviders.isEnabled, true)
+          )
+        )
+
+      const processedModels: AIModel[] = []
+
+      for (const provider of enabledProviders) {
+        // 从静态定义中获取该厂商的所有模型
+        const providerModels = getStaticProviderModels(provider.provider)
+        
+        for (const model of providerModels) {
+          processedModels.push({
+            id: model.id, // 使用厂商官方格式的模型 ID
+            name: model.name,
+            provider: PROVIDER_MAP[provider.provider] || provider.provider,
+            providerId: provider.provider,
+            contextLength: model.contextLength,
+            pricing: {
+              prompt: 0,
+              completion: 0,
+            },
+          })
+        }
+      }
+
+      // 按厂商和名称排序
+      processedModels.sort((a, b) => {
+        if (a.provider !== b.provider) {
+          return a.provider.localeCompare(b.provider, 'zh-CN')
+        }
+        return a.name.localeCompare(b.name, 'zh-CN')
+      })
+
+      // 按厂商分组统计
+      const providerStats = processedModels.reduce((acc, model) => {
+        acc[model.provider] = (acc[model.provider] || 0) + 1
+        return acc
+      }, {} as Record<string, number>)
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          models: processedModels,
+          total: processedModels.length,
+          providers: Object.keys(providerStats).map(name => ({
+            name,
+            count: providerStats[name],
+          })),
+        },
+      })
+    }
+
+    // OpenRouter 模式：从 OpenRouter 获取模型列表
     const response = await fetch('https://openrouter.ai/api/v1/models', {
       headers: {
         'Content-Type': 'application/json',

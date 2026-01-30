@@ -3,11 +3,11 @@
 import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { useSession } from "next-auth/react"
 import {
   Brain,
   LayoutDashboard,
   BookOpen,
-  FileText,
   MessageSquare,
   Settings,
   LogOut,
@@ -17,19 +17,50 @@ import {
 import { signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 const navItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "仪表板" },
   { href: "/learn", icon: BookOpen, label: "学习" },
-  { href: "/notes", icon: FileText, label: "笔记" },
   { href: "/chat", icon: MessageSquare, label: "AI助手" },
   { href: "/settings", icon: Settings, label: "设置" },
 ]
 
+// 创建 Context 来共享 collapsed 状态
+const SidebarContext = React.createContext<{
+  collapsed: boolean
+  setCollapsed: (collapsed: boolean) => void
+}>({
+  collapsed: false,
+  setCollapsed: () => {},
+})
+
+export const useSidebar = () => React.useContext(SidebarContext)
+
+export function SidebarProvider({ children }: { children: React.ReactNode }) {
+  const [collapsed, setCollapsed] = React.useState(false)
+
+  return (
+    <SidebarContext.Provider value={{ collapsed, setCollapsed }}>
+      {children}
+    </SidebarContext.Provider>
+  )
+}
+
 export function Sidebar() {
   const pathname = usePathname()
-  const [collapsed, setCollapsed] = React.useState(false)
+  const { data: session } = useSession()
+  const { collapsed, setCollapsed } = useSidebar()
+  
+  const user = session?.user
+  const initials = user?.name
+    ? user.name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+    : user?.email?.[0]?.toUpperCase() || "U"
 
   return (
     <aside
@@ -86,19 +117,48 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* 底部 */}
-      <div className="p-2 border-t border-gray-200">
-        <Button
-          variant="ghost"
-          className={cn(
-            "w-full justify-start gap-3 text-[var(--color-text-secondary)]",
-            collapsed && "justify-center px-0"
-          )}
-          onClick={() => signOut({ callbackUrl: "/" })}
-        >
-          <LogOut className="w-5 h-5" />
-          {!collapsed && <span>退出登录</span>}
-        </Button>
+      {/* 底部 - 用户信息和退出登录 */}
+      <div className="p-2 border-t border-gray-200 flex flex-col items-center space-y-2">
+        {/* 用户头像 - hover 显示信息 */}
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger className="flex items-center justify-center py-2 cursor-pointer">
+              <Avatar className="w-9 h-9">
+                <AvatarFallback className="bg-[var(--color-primary)] text-white">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="bg-gray-900 text-white">
+              <div>
+                <p className="font-medium text-white">{user?.name || "用户"}</p>
+                <p className="text-xs text-gray-300">{user?.email}</p>
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        
+        {/* 退出登录按钮 */}
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger className="flex justify-center">
+              <Button
+                variant="ghost"
+                className={cn(
+                  "text-[var(--color-text-secondary)] hover:text-red-600 transition-colors",
+                  collapsed ? "px-0" : "gap-2"
+                )}
+                onClick={() => signOut({ callbackUrl: "/" })}
+              >
+                <LogOut className="w-5 h-5" />
+                {!collapsed && <span>退出登录</span>}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="bg-gray-900 text-white">
+              <p className="text-white">退出登录</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
 
       {/* 折叠按钮 */}

@@ -16,6 +16,7 @@ import { createDbClient } from "@/db/client"
 import { learningPlans } from "@/db/schema"
 import { eq, desc } from "drizzle-orm"
 import { getCloudflareContext } from "@opennextjs/cloudflare"
+import { getUserIdOrDemo } from "@/lib/auth/get-user"
 
 export const metadata = {
   title: "学习计划 - AI学习平台",
@@ -51,6 +52,9 @@ export default async function LearnPage() {
     redirect("/auth/login")
   }
 
+  // 获取用户 ID（与仪表盘保持一致）
+  const userId = await getUserIdOrDemo()
+
   // 从数据库获取学习计划
   let plans: any[] = []
   
@@ -58,12 +62,18 @@ export default async function LearnPage() {
     const context = getCloudflareContext()
     if (context?.env?.DB) {
       const db = createDbClient(context.env.DB as D1Database)
-      // 获取 demo-user 的所有学习计划
+      // 获取当前用户的所有学习计划
       plans = await db
         .select()
         .from(learningPlans)
-        .where(eq(learningPlans.userId, 'demo-user'))
+        .where(eq(learningPlans.userId, userId))
         .orderBy(desc(learningPlans.updatedAt))
+      
+      console.log('=== 学习计划页面调试 ===')
+      console.log('用户ID:', userId)
+      console.log('学习计划数量:', plans.length)
+      console.log('计划列表:', plans.map(p => ({ id: p.id, title: p.title, status: p.status })))
+      console.log('======================\n')
     }
   } catch (error) {
     console.error('Failed to fetch learning plans:', error)

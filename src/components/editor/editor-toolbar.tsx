@@ -33,6 +33,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { VideoEmbedDialog } from "./video-embed-dialog"
+import { ImageInsertDialog } from "./image-insert-dialog"
+import { FloatingInput } from "./floating-input"
 import { useToast } from "@/components/ui/toast-container"
 
 interface EditorToolbarProps {
@@ -86,70 +88,123 @@ function ToolbarDivider() {
 
 export function EditorToolbar({ editor }: EditorToolbarProps) {
   const [isVideoDialogOpen, setIsVideoDialogOpen] = React.useState(false)
+  const [isImageDialogOpen, setIsImageDialogOpen] = React.useState(false)
+  const [floatingInput, setFloatingInput] = React.useState<{
+    isOpen: boolean
+    type: 'link' | 'inline-math' | 'block-math'
+    defaultValue?: string
+    anchorElement?: HTMLElement | null
+  }>({
+    isOpen: false,
+    type: 'link',
+  })
   const toast = useToast()
 
-  const addImage = React.useCallback(() => {
-    // 创建文件选择器
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = 'image/*'
-    input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0]
-      if (!file) return
-
-      try {
-        // 上传图片
-        const formData = new FormData()
-        formData.append('file', file)
-
-        const response = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData,
-        })
-
-        if (!response.ok) {
-          throw new Error('上传失败')
-        }
-
-        const data = await response.json() as { url: string }
-
-        // 插入可调整大小的图片
-        editor.commands.insertContent({
-          type: 'resizableImage',
-          attrs: {
-            src: data.url,
-            alt: file.name,
-            width: null,
-            align: 'left',
-          },
-        })
-      } catch (error) {
-        console.error('图片上传失败:', error)
-        toast.error('图片上传失败，请重试')
-      }
+  // 监听打开图片对话框的事件
+  React.useEffect(() => {
+    const handleOpenImageDialog = () => {
+      setIsImageDialogOpen(true)
     }
-    input.click()
-  }, [editor, toast])
+
+    document.addEventListener("openImageDialog", handleOpenImageDialog)
+    return () => {
+      document.removeEventListener("openImageDialog", handleOpenImageDialog)
+    }
+  }, [])
+
+  // 监听打开视频对话框的事件
+  React.useEffect(() => {
+    const handleOpenVideoDialog = () => {
+      setIsVideoDialogOpen(true)
+    }
+
+    document.addEventListener("openVideoDialog", handleOpenVideoDialog)
+    return () => {
+      document.removeEventListener("openVideoDialog", handleOpenVideoDialog)
+    }
+  }, [])
+
+  // 监听打开数学公式输入框的事件
+  React.useEffect(() => {
+    const handleOpenMathInput = (event: Event) => {
+      const customEvent = event as CustomEvent
+      const type = customEvent.detail?.type || 'inline'
+      setFloatingInput({
+        isOpen: true,
+        type: type === 'inline' ? 'inline-math' : 'block-math',
+      })
+    }
+
+    document.addEventListener("openMathInput", handleOpenMathInput)
+    return () => {
+      document.removeEventListener("openMathInput", handleOpenMathInput)
+    }
+  }, [])
+
+  // 监听打开链接输入框的事件（来自 bubble-menu）
+  React.useEffect(() => {
+    const handleOpenLinkInput = (event: Event) => {
+      const customEvent = event as CustomEvent
+      const defaultValue = customEvent.detail?.defaultValue || ''
+      setFloatingInput({
+        isOpen: true,
+        type: 'link',
+        defaultValue,
+      })
+    }
+
+    document.addEventListener("openLinkInput", handleOpenLinkInput)
+    return () => {
+      document.removeEventListener("openLinkInput", handleOpenLinkInput)
+    }
+  }, [])
+
+  const handleImageInsert = React.useCallback((src: string, alt?: string) => {
+    editor.commands.insertContent({
+      type: 'resizableImage',
+      attrs: {
+        src,
+        alt: alt || '',
+        width: null,
+        align: 'left',
+      },
+    })
+  }, [editor])
 
   const addLink = React.useCallback(() => {
     const previousUrl = editor.getAttributes("link").href
-    const url = window.prompt("输入链接URL:", previousUrl)
-
-    if (url === null) return
-
-    if (url === "") {
-      editor.chain().focus().extendMarkRange("link").unsetLink().run()
-      return
-    }
-
-    editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run()
+    setFloatingInput({
+      isOpen: true,
+      type: 'link',
+      defaultValue: previousUrl || '',
+    })
   }, [editor])
 
-  const handleVideoEmbed = React.useCallback((url: string, type: 'youtube' | 'vimeo') => {
+  const handleFloatingInputSubmit = React.useCallback((value: string) => {
+    if (floatingInput.type === 'link') {
+      if (value === "") {
+        editor.chain().focus().extendMarkRange("link").unsetLink().run()
+      } else {
+        editor.chain().focus().extendMarkRange("link").setLink({ href: value }).run()
+      }
+    } else if (floatingInput.type === 'inline-math') {
+      if (value) {
+        editor.chain().focus().setMath({ latex: value, display: false }).run()
+      }
+    } else if (floatingInput.type === 'block-math') {
+      if (value) {
+        editor.chain().focus().setBlockMath({ latex: value }).run()
+      }
+    }
+  }, [editor, floatingInput.type])
+
+  const handleVideoEmbed = React.useCallback((url: string, type: 'youtube' | 'vimeo' | 'bilibili' | 'tencent' | 'youku' | 'iqiyi') => {
     if (type === 'youtube') {
       editor.commands.setYoutubeVideo({ src: url })
     } else if (type === 'vimeo') {
       editor.commands.setVimeoVideo({ src: url })
+    } else {
+      editor.commands.setGenericVideo({ src: url, type })
     }
   }, [editor])
 
@@ -158,18 +213,18 @@ export function EditorToolbar({ editor }: EditorToolbarProps) {
   }, [editor])
 
   const addInlineMath = React.useCallback(() => {
-    const latex = window.prompt("输入 LaTeX 公式（行内）:")
-    if (latex) {
-      editor.chain().focus().setMath({ latex, display: false }).run()
-    }
-  }, [editor])
+    setFloatingInput({
+      isOpen: true,
+      type: 'inline-math',
+    })
+  }, [])
 
   const addBlockMath = React.useCallback(() => {
-    const latex = window.prompt("输入 LaTeX 公式（块级）:")
-    if (latex) {
-      editor.chain().focus().setBlockMath({ latex }).run()
-    }
-  }, [editor])
+    setFloatingInput({
+      isOpen: true,
+      type: 'block-math',
+    })
+  }, [])
 
   return (
     <>
@@ -302,7 +357,7 @@ export function EditorToolbar({ editor }: EditorToolbarProps) {
       <ToolbarButton onClick={addLink} isActive={editor.isActive("link")} tooltip="链接">
         <LinkIcon className="w-4 h-4" />
       </ToolbarButton>
-      <ToolbarButton onClick={addImage} tooltip="图片">
+      <ToolbarButton onClick={() => setIsImageDialogOpen(true)} tooltip="插入图片">
         <ImageIcon className="w-4 h-4" />
       </ToolbarButton>
       <ToolbarButton onClick={() => setIsVideoDialogOpen(true)} tooltip="嵌入视频">
@@ -328,6 +383,36 @@ export function EditorToolbar({ editor }: EditorToolbarProps) {
       isOpen={isVideoDialogOpen}
       onClose={() => setIsVideoDialogOpen(false)}
       onEmbed={handleVideoEmbed}
+    />
+
+    {/* 图片插入对话框 */}
+    <ImageInsertDialog
+      isOpen={isImageDialogOpen}
+      onClose={() => setIsImageDialogOpen(false)}
+      onInsert={handleImageInsert}
+    />
+
+    {/* 悬浮输入框 */}
+    <FloatingInput
+      isOpen={floatingInput.isOpen}
+      onClose={() => setFloatingInput({ ...floatingInput, isOpen: false })}
+      onSubmit={handleFloatingInputSubmit}
+      placeholder={
+        floatingInput.type === 'link'
+          ? "输入链接 URL..."
+          : floatingInput.type === 'inline-math'
+          ? "输入 LaTeX 公式（行内）..."
+          : "输入 LaTeX 公式（块级）..."
+      }
+      defaultValue={floatingInput.defaultValue}
+      title={
+        floatingInput.type === 'link'
+          ? "插入链接"
+          : floatingInput.type === 'inline-math'
+          ? "插入行内公式"
+          : "插入块级公式"
+      }
+      anchorElement={floatingInput.anchorElement}
     />
   </>
   )

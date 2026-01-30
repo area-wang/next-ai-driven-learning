@@ -82,7 +82,7 @@ export function LoginForm({ className, callbackUrl = "/dashboard" }: LoginFormPr
           <div className="space-y-2">
             <Label htmlFor="email">邮箱</Label>
             <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--color-text-muted)]" />
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-700" />
               <Input
                 id="email"
                 type="email"
@@ -99,7 +99,7 @@ export function LoginForm({ className, callbackUrl = "/dashboard" }: LoginFormPr
           <div className="space-y-2">
             <Label htmlFor="password">密码</Label>
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--color-text-muted)]" />
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-700" />
               <Input
                 id="password"
                 type={showPassword ? "text" : "password"}
@@ -113,7 +113,7 @@ export function LoginForm({ className, callbackUrl = "/dashboard" }: LoginFormPr
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-[var(--color-text)] cursor-pointer"
               >
                 {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
               </button>

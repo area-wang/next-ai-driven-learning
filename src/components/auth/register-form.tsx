@@ -113,7 +113,7 @@ export function RegisterForm({ className }: RegisterFormProps) {
           <div className="space-y-2">
             <Label htmlFor="name">昵称</Label>
             <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--color-text-muted)]" />
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-700" />
               <Input
                 id="name"
                 type="text"
@@ -129,7 +129,7 @@ export function RegisterForm({ className }: RegisterFormProps) {
           <div className="space-y-2">
             <Label htmlFor="email" required>邮箱</Label>
             <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--color-text-muted)]" />
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-700" />
               <Input
                 id="email"
                 type="email"
@@ -146,7 +146,7 @@ export function RegisterForm({ className }: RegisterFormProps) {
           <div className="space-y-2">
             <Label htmlFor="password" required>密码</Label>
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--color-text-muted)]" />
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-700" />
               <Input
                 id="password"
                 type={showPassword ? "text" : "password"}
@@ -160,7 +160,7 @@ export function RegisterForm({ className }: RegisterFormProps) {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-[var(--color-text)] cursor-pointer"
               >
                 {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
               </button>
@@ -176,7 +176,7 @@ export function RegisterForm({ className }: RegisterFormProps) {
                     ) : (
                       <X className="w-3 h-3 text-red-400" />
                     )}
-                    <span className={req.test(password) ? "text-green-600" : "text-[var(--color-text-muted)]"}>
+                    <span className={req.test(password) ? "text-green-600" : "text-gray-500"}>
                       {req.label}
                     </span>
                   </div>
@@ -188,7 +188,7 @@ export function RegisterForm({ className }: RegisterFormProps) {
           <div className="space-y-2">
             <Label htmlFor="confirmPassword" required>确认密码</Label>
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--color-text-muted)]" />
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-700" />
               <Input
                 id="confirmPassword"
                 type={showPassword ? "text" : "password"}

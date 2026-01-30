@@ -10,7 +10,7 @@ export default function AIChatPage() {
       <div className="max-w-4xl mx-auto h-full flex flex-col gap-4">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">
-            AI 对话助手
+            AI 助手
           </h1>
           <p className="text-slate-600 dark:text-slate-400">
             与 AI 进行对话，获取学习帮助和建议

@@ -69,15 +69,7 @@ body {
   color: inherit;
 }
 
-/* 移除所有输入框的 focus 边框 */
-input:focus,
-input:focus-visible {
-  outline: none !important;
-  box-shadow: none !important;
-  border-color: transparent !important;
-}
-
-/* 编辑器样式 - 移除 focus 边框 */
+/* 编辑器样式 - 移除 focus 边框（仅针对编辑器） */
 .ProseMirror {
   outline: none !important;
   border: none !important;
@@ -544,10 +536,17 @@ button, a, [role="button"], .clickable {
   }
 }
 
-/* Focus 状态 */
-:focus-visible {
+/* Focus 状态 - 仅针对非表单元素 */
+:focus-visible:not(input):not(textarea):not(select) {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
+}
+
+/* 表单元素的 focus 样式由组件自己控制 */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
 }
 
 /* 滚动条样式 */
@@ -692,4 +691,33 @@ button, a, [role="button"], .clickable {
 .custom-checkbox:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* 3D 翻转效果 */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.transform-style-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+}
+
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
+
+/* contenteditable placeholder */
+[contenteditable][data-placeholder]:empty:before {
+  content: attr(data-placeholder);
+  color: #9ca3af;
+  pointer-events: none;
+  position: absolute;
+}
+
+[contenteditable]:focus {
+  outline: none;
 }

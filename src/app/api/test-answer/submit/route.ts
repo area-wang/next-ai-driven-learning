@@ -5,11 +5,13 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { createAIClientFromRequest } from '@/lib/ai/config-client'
+import { getAIConfig } from '@/lib/ai/get-ai-config'
+import { OpenAIClient } from '@/lib/ai/client'
 
 interface SubmitRequest {
   documentId: string
   planId: string
+  modelId?: string
   answers: Array<{
     questionIndex: number
     questionText: string
@@ -28,23 +30,15 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json() as SubmitRequest
-    const { documentId, answers } = body
+    const { documentId, answers, modelId } = body
 
     if (!documentId || !answers || answers.length === 0) {
       return NextResponse.json({ error: '缺少必要参数' }, { status: 400 })
     }
 
-    // 创建 AI 客户端
-    let aiClient: ReturnType<typeof createAIClientFromRequest>
-    try {
-      aiClient = createAIClientFromRequest(request)
-    } catch (clientError) {
-      console.error('创建 AI 客户端失败:', clientError)
-      return NextResponse.json(
-        { error: `${clientError instanceof Error ? clientError.message : '创建 AI 客户端失败'}` },
-        { status: 500 }
-      )
-    }
+    // 获取 AI 配置
+    const config = await getAIConfig(request as unknown as Request, session.user.id, modelId)
+    const aiClient = new OpenAIClient(config.apiKey, config.model, config.baseUrl)
 
     // 评估每道题
     const results = await Promise.all(

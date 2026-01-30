@@ -190,6 +190,7 @@ export const MODELS_BY_PROVIDER: Record<AIProvider, ModelInfo[]> = {
   gemini: AVAILABLE_MODELS.filter(m => m.provider === 'gemini'),
   claude: AVAILABLE_MODELS.filter(m => m.provider === 'claude'),
   cloudflare: AVAILABLE_MODELS.filter(m => m.provider === 'cloudflare'),
+  custom: [], // 自定义提供商没有预定义模型
 }
 
 /**

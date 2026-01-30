@@ -29,6 +29,20 @@
       "when": 1768977686572,
       "tag": "0003_certain_invisible_woman",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1769394687596,
+      "tag": "0004_amazing_patch",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1769654122317,
+      "tag": "0005_fancy_thing",
+      "breakpoints": true
     }
   ]
 }

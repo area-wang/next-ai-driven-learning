@@ -9,7 +9,6 @@ import * as React from "react"
 import { AnswerModeHeader } from "./answer-mode-header"
 import { QuestionAnswerItem, type ParsedQuestion, type QuestionResult } from "./question-answer-item"
 import { AnswerCardPanel } from "./answer-card-panel"
-import { useAIConfig } from "@/hooks/use-ai-config"
 import { useToast } from "@/components/ui/toast-container"
 
 interface TestAnswerOverlayProps {
@@ -18,6 +17,7 @@ interface TestAnswerOverlayProps {
   planId: string
   onClose: () => void
   onUpdateContent: (content: string) => void
+  modelId?: string
 }
 
 interface AnswerState {
@@ -40,8 +40,8 @@ export function TestAnswerOverlay({
   planId,
   onClose,
   onUpdateContent,
+  modelId,
 }: TestAnswerOverlayProps) {
-  const { config, getApiKey } = useAIConfig()
   const toast = useToast()
   
   const [state, setState] = React.useState<AnswerState>({
@@ -204,14 +204,6 @@ export function TestAnswerOverlay({
     setState(prev => ({ ...prev, isSubmitting: true }))
 
     try {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      }
-      const apiKey = getApiKey(config.provider)
-      if (apiKey) {
-        headers['x-api-key'] = apiKey
-      }
-
       // 重新解析 HTML，提取完整的题目数据（包括答案和解析）
       const fullQuestions = parseQuestionsFromHTML(documentContent, true)
 
@@ -230,13 +222,14 @@ export function TestAnswerOverlay({
 
       const response = await fetch('/api/test-answer/submit', {
         method: 'POST',
-        headers,
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           documentId,
           planId,
           answers,
-          provider: config.provider,
-          model: config.model,
+          modelId, // 传递 modelId 给后端
         }),
       })
 
@@ -288,7 +281,7 @@ export function TestAnswerOverlay({
       toast.error('提交失败，请重试')
       setState(prev => ({ ...prev, isSubmitting: false }))
     }
-  }, [state.questions, state.userAnswers, documentId, planId, documentContent, config, getApiKey, toast])
+  }, [state.questions, state.userAnswers, documentId, planId, documentContent, modelId, toast])
 
   // 重新答题
   const handleRetry = React.useCallback(() => {
@@ -313,17 +306,11 @@ export function TestAnswerOverlay({
     }))
 
     try {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      }
-      const apiKey = getApiKey(config.provider)
-      if (apiKey) {
-        headers['x-api-key'] = apiKey
-      }
-
       const response = await fetch('/api/test-answer/generate-similar', {
         method: 'POST',
-        headers,
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           originalQuestion: {
             type: question.type,
@@ -331,8 +318,7 @@ export function TestAnswerOverlay({
             difficulty: 'medium',
             topic: question.question.substring(0, 50),
           },
-          provider: config.provider,
-          model: config.model,
+          modelId, // 传递 modelId 给后端
         }),
       })
 
@@ -425,7 +411,7 @@ export function TestAnswerOverlay({
         return { ...prev, generatingQuestions: newSet }
       })
     }
-  }, [state.questions, config, getApiKey, documentContent, onUpdateContent, toast])
+  }, [state.questions, modelId, documentContent, onUpdateContent, toast])
 
   // 跳转到指定题目
   const handleQuestionClick = React.useCallback((questionIndex: number) => {

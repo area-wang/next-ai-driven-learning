@@ -17,6 +17,7 @@ interface AIGenerateDialogProps {
   onClose: () => void
   onGenerate: (params: GenerateParams) => Promise<void>
   parentDocId?: string
+  parentDocTitle?: string // 新增：父文档标题
   // 新增：当前文档信息（用于生成章节内容）
   currentDoc?: {
     id: string
@@ -40,6 +41,7 @@ export interface GenerateParams {
   additionalContext?: string
   currentDocId?: string
   modelId?: string // 添加模型ID参数
+  depth?: number // 新增：大纲层级深度（1-3）
 }
 
 export function AIGenerateDialog({
@@ -47,6 +49,7 @@ export function AIGenerateDialog({
   onClose,
   onGenerate,
   parentDocId,
+  parentDocTitle,
   currentDoc,
   planInfo,
 }: AIGenerateDialogProps) {
@@ -54,6 +57,7 @@ export function AIGenerateDialog({
   const [goal, setGoal] = React.useState("")
   const [additionalContext, setAdditionalContext] = React.useState("")
   const [level, setLevel] = React.useState<'beginner' | 'intermediate' | 'advanced'>('beginner')
+  const [depth, setDepth] = React.useState<number>(2) // 新增：默认2级
   const [isGenerating, setIsGenerating] = React.useState(false)
   const [selectedModelId, setSelectedModelId] = React.useState<string | undefined>(undefined)
   const toast = useToast()
@@ -65,6 +69,10 @@ export function AIGenerateDialog({
         // 生成章节内容模式：使用当前文档标题
         setTopic(currentDoc.title)
         setGoal(currentDoc.description || planInfo?.goal || "")
+      } else if (parentDocTitle) {
+        // 生成子文档模式：使用父文档标题
+        setTopic(parentDocTitle)
+        setGoal("") // 子文档目标由用户输入
       } else if (planInfo) {
         // 生成大纲模式：使用计划信息
         setTopic(planInfo.topic)
@@ -72,7 +80,7 @@ export function AIGenerateDialog({
         setLevel(planInfo.level)
       }
     }
-  }, [isOpen, currentDoc, planInfo])
+  }, [isOpen, currentDoc, planInfo, parentDocTitle])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -92,6 +100,7 @@ export function AIGenerateDialog({
         additionalContext: additionalContext.trim() || undefined,
         currentDocId: currentDoc?.id,
         modelId: selectedModelId, // 传递选中的模型ID
+        depth, // 传递层级深度
       })
       
       // 重置表单
@@ -99,6 +108,7 @@ export function AIGenerateDialog({
       setGoal("")
       setAdditionalContext("")
       setLevel('beginner')
+      setDepth(2) // 重置层级
       onClose()
     } catch (error) {
       console.error('Generation failed:', error)
@@ -135,15 +145,15 @@ export function AIGenerateDialog({
             {/* 学习主题 */}
             <div>
               <label htmlFor="topic" className="block text-sm font-medium text-gray-700 mb-2">
-                {currentDoc ? '章节标题' : '学习主题'} <span className="text-red-500">*</span>
+                {currentDoc ? '章节标题' : parentDocTitle ? '父文档主题' : '学习主题'} <span className="text-red-500">*</span>
               </label>
               <input
                 id="topic"
                 type="text"
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
-                placeholder={currentDoc ? "自动填充当前章节标题" : "例如：React Hooks 进阶"}
-                disabled={isGenerating || !!currentDoc}
+                placeholder={currentDoc ? "自动填充当前章节标题" : parentDocTitle ? "自动填充父文档标题" : "例如：React Hooks 进阶"}
+                disabled={isGenerating || !!currentDoc || !!parentDocTitle}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500 text-sm"
                 required
               />
@@ -152,36 +162,40 @@ export function AIGenerateDialog({
             {/* 学习目标 */}
             <div>
               <label htmlFor="goal" className="block text-sm font-medium text-gray-700 mb-2">
-                学习目标（可选）
+                {parentDocTitle ? '子文档学习目标' : '学习目标'}（可选）
               </label>
               <textarea
                 id="goal"
                 value={goal}
                 onChange={(e) => setGoal(e.target.value)}
-                placeholder="例如：掌握 useState、useEffect、useContext 等常用 Hooks"
+                placeholder={parentDocTitle ? "例如：深入理解 useState 的工作原理和最佳实践" : "例如：掌握 useState、useEffect、useContext 等常用 Hooks"}
                 disabled={isGenerating}
                 rows={2}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500 text-sm resize-none"
               />
             </div>
 
-            {/* 补充描述 - 仅在生成章节内容时显示 */}
-            {currentDoc && (
-              <div>
-                <label htmlFor="additionalContext" className="block text-sm font-medium text-gray-700 mb-2">
-                  补充描述（可选）
-                </label>
-                <textarea
-                  id="additionalContext"
-                  value={additionalContext}
-                  onChange={(e) => setAdditionalContext(e.target.value)}
-                  placeholder="例如：重点讲解实际应用场景，包含完整代码示例"
-                  disabled={isGenerating}
-                  rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500 text-sm resize-none"
-                />
-              </div>
-            )}
+            {/* 补充描述 - 生成章节内容、生成子文档、生成大纲时都显示 */}
+            <div>
+              <label htmlFor="additionalContext" className="block text-sm font-medium text-gray-700 mb-2">
+                补充描述（可选）
+              </label>
+              <textarea
+                id="additionalContext"
+                value={additionalContext}
+                onChange={(e) => setAdditionalContext(e.target.value)}
+                placeholder={
+                  currentDoc 
+                    ? "例如：重点讲解实际应用场景，包含完整代码示例" 
+                    : parentDocTitle
+                    ? "例如：需要包含实战案例，难度适中"
+                    : "例如：需要循序渐进，从基础到进阶"
+                }
+                disabled={isGenerating}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500 text-sm resize-none"
+              />
+            </div>
 
             {/* 难度级别 */}
             <div>
@@ -212,6 +226,43 @@ export function AIGenerateDialog({
               </div>
             </div>
 
+            {/* 大纲层级 - 只在生成大纲时显示 */}
+            {!currentDoc && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  大纲层级
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { value: 1, label: '1级', desc: '只生成主章节' },
+                    { value: 2, label: '2级', desc: '章节+小节' },
+                    { value: 3, label: '3级', desc: '章节+小节+细节' },
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setDepth(option.value)}
+                      disabled={isGenerating}
+                      className={cn(
+                        "px-3 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer flex flex-col items-center",
+                        depth === option.value
+                          ? "bg-teal-500 text-white"
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      )}
+                    >
+                      <span>{option.label}</span>
+                      <span className={cn(
+                        "text-xs mt-1",
+                        depth === option.value ? "text-teal-100" : "text-gray-500"
+                      )}>
+                        {option.desc}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* AI 模型选择 */}
             <ConfiguredModelSelector
               value={selectedModelId}
@@ -224,6 +275,12 @@ export function AIGenerateDialog({
               <div className="px-3 py-2 rounded-lg bg-blue-50 border border-blue-200">
                 <p className="text-sm text-blue-800">
                   将为「{currentDoc.title}」生成详细学习内容
+                </p>
+              </div>
+            ) : parentDocId && parentDocTitle ? (
+              <div className="px-3 py-2 rounded-lg bg-blue-50 border border-blue-200">
+                <p className="text-sm text-blue-800">
+                  将在「{parentDocTitle}」下生成子文档
                 </p>
               </div>
             ) : parentDocId ? (

@@ -1,5 +1,18 @@
-import { Sidebar } from "@/components/layout/sidebar"
+'use client'
+
+import { SidebarProvider, Sidebar, useSidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
+
+function DashboardContent({ children }: { children: React.ReactNode }) {
+  const { collapsed } = useSidebar()
+  
+  return (
+    <div className={`transition-all duration-300 ${collapsed ? 'pl-16' : 'pl-64'}`}>
+      <Header />
+      <main className="p-6">{children}</main>
+    </div>
+  )
+}
 
 export default function DashboardLayout({
   children,
@@ -7,12 +20,11 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   return (
-    <div className="min-h-screen bg-[var(--color-bg-light)]">
-      <Sidebar />
-      <div className="pl-64 transition-all duration-300">
-        <Header />
-        <main className="p-6">{children}</main>
+    <SidebarProvider>
+      <div className="min-h-screen bg-[var(--color-bg-light)]">
+        <Sidebar />
+        <DashboardContent>{children}</DashboardContent>
       </div>
-    </div>
+    </SidebarProvider>
   )
 }

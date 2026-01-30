@@ -6,8 +6,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDbClient } from '@/lib/db-connection'
 import { learningPlans } from '@/db/schema'
-import { createAIClientFromRequest } from '@/lib/ai/config-client'
+import { getAIConfig } from '@/lib/ai/get-ai-config'
+import { OpenAIClient } from '@/lib/ai/client'
 import { generateLearningPlanPrompt, type LearningPlanInput } from '@/lib/ai/prompts'
+import { getCurrentUserId } from '@/lib/auth/get-user'
 
 interface GenerateRequest {
   topic: string
@@ -15,6 +17,7 @@ interface GenerateRequest {
   level: 'beginner' | 'intermediate' | 'advanced'
   duration?: string
   userId?: string
+  modelId?: string
 }
 
 interface LearningPlanResponse {
@@ -32,7 +35,7 @@ interface LearningPlanResponse {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as GenerateRequest
-    const { topic, goal, level, duration, userId } = body
+    const { topic, goal, level, duration, userId, modelId } = body
 
     if (!topic) {
       return NextResponse.json(
@@ -41,8 +44,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 从配置创建 AI 客户端
-    const aiClient = createAIClientFromRequest(request)
+    // 获取用户 ID
+    const currentUserId = await getCurrentUserId()
+    if (!currentUserId) {
+      return NextResponse.json({ error: '未授权' }, { status: 401 })
+    }
+
+    // 获取 AI 配置
+    const config = await getAIConfig(request as unknown as Request, currentUserId, modelId)
+    const aiClient = new OpenAIClient(config.apiKey, config.model, config.baseUrl)
 
     // 生成提示词
     const input: LearningPlanInput = {
@@ -62,7 +72,7 @@ export async function POST(request: NextRequest) {
         },
       ],
       temperature: 0.7,
-      maxTokens: 2000,
+      maxTokens: 100000,
     })
 
     // 解析 AI 响应
@@ -84,12 +94,13 @@ export async function POST(request: NextRequest) {
     }
 
     // 如果提供了 userId，保存到数据库
-    if (userId) {
+    const saveUserId = userId || currentUserId
+    if (saveUserId) {
       const db = getDbClient(request)
       if (db) {
         try {
           const [plan] = await db.insert(learningPlans).values({
-            userId,
+            userId: saveUserId,
             title: planData.title,
             description: planData.description,
             topic,

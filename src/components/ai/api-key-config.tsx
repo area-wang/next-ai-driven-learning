@@ -19,6 +19,7 @@ export function ApiKeyConfig() {
     gemini: false,
     claude: false,
     cloudflare: false,
+    custom: false,
   })
   const [editingKeys, setEditingKeys] = useState<Partial<Record<AIProvider, string>>>({})
   const [savedProvider, setSavedProvider] = useState<AIProvider | null>(null)

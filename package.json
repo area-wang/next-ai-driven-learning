@@ -40,6 +40,7 @@
 		"katex": "^0.16.27",
 		"lowlight": "^3.3.0",
 		"lucide-react": "^0.562.0",
+		"marked": "^17.0.1",
 		"next": "16.0.7",
 		"next-auth": "^5.0.0-beta.30",
 		"react": "19.2.1",
@@ -50,6 +51,7 @@
 	"devDependencies": {
 		"@eslint/eslintrc": "3",
 		"@tailwindcss/postcss": "4.1.17",
+		"@types/marked": "^5.0.2",
 		"@types/node": "24.10.1",
 		"@types/react": "19.2.7",
 		"@types/react-dom": "19.2.3",
@@ -73,6 +75,7 @@
 		"start": "next start",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate:local": "wrangler d1 execute ai-learning-platform --local --file=./drizzle/0000_young_richard_fisk.sql",
-		"db:migrate:remote": "wrangler d1 execute ai-learning-platform --remote --file=./drizzle/0000_young_richard_fisk.sql"
+		"db:migrate:remote": "wrangler d1 execute ai-learning-platform --remote --file=./drizzle/0000_young_richard_fisk.sql",
+		"db:migrate:all:remote": "node migrate-remote.js"
 	}
 }

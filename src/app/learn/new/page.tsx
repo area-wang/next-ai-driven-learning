@@ -1,8 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useRouter } from "next/navigation"
-import { ArrowLeft, Sparkles, BookOpen, Target, Clock } from "lucide-react"
+import { ArrowLeft, Sparkles, Clock } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,8 +10,8 @@ import { Label } from "@/components/ui/label"
 import { Spinner } from "@/components/ui/spinner"
 import Link from "next/link"
 import { ConfiguredModelSelector } from "@/components/ai/configured-model-selector"
-import { getModelConfig } from "@/lib/ai/config"
 import { useToast } from "@/components/ui/toast-container"
+import { OutlinePreviewDialog } from "@/components/editor/outline-preview-dialog"
 
 const levels = [
   { value: "beginner", label: "入门", description: "零基础开始学习" },
@@ -21,13 +20,20 @@ const levels = [
 ]
 
 export default function NewLearningPlanPage() {
-  const router = useRouter()
   const toast = useToast()
   const [topic, setTopic] = React.useState("")
   const [goal, setGoal] = React.useState("")
+  const [additionalContext, setAdditionalContext] = React.useState("") // 新增：补充描述
   const [level, setLevel] = React.useState("beginner")
+  const [depth, setDepth] = React.useState<number>(2) // 新增：大纲层级，默认2级
   const [isGenerating, setIsGenerating] = React.useState(false)
   const [selectedModelId, setSelectedModelId] = React.useState<string | undefined>(undefined)
+  
+  // 新增：大纲预览相关状态
+  const [isOutlinePreviewOpen, setIsOutlinePreviewOpen] = React.useState(false)
+  const [previewOutlines, setPreviewOutlines] = React.useState<any[]>([])
+  const [isRegeneratingOutline, setIsRegeneratingOutline] = React.useState(false)
+  const [generatedPlanId, setGeneratedPlanId] = React.useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -40,44 +46,34 @@ export default function NewLearningPlanPage() {
     setIsGenerating(true)
 
     try {
-      // 获取选中模型的配置
-      const modelConfig = getModelConfig(selectedModelId)
-      if (!modelConfig) {
-        throw new Error('模型配置不存在')
-      }
-
-      console.log('[Form] Using model:', {
-        id: modelConfig.id,
-        name: modelConfig.name,
-        model: modelConfig.model,
-      })
-
       const requestBody = {
         topic,
         goal: goal || undefined,
         level,
-        modelId: selectedModelId, // 传递模型ID
+        additionalContext: additionalContext || undefined, // 新增：传递补充描述
+        modelId: selectedModelId,
+        depth, // 新增：传递层级深度
       }
 
       console.log('[Form] Request body:', requestBody)
 
-      // 调用 AI 生成 API
-      const { fetchWithModel } = await import('@/lib/ai/fetch-with-model')
-      const response = await fetchWithModel(
-        '/api/learning-outline/generate',
-        selectedModelId,
-        {
-          method: 'POST',
-          body: JSON.stringify(requestBody),
-        }
-      )
+      // 调用 API 生成大纲
+      const response = await fetch('/api/learning-outline/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      })
 
       if (!response.ok) {
         let errorMessage = 'AI 生成失败'
         try {
-          const error = await response.json() as { error?: string }
+          const error = await response.json() as { error?: string; details?: string }
           errorMessage = error.error || errorMessage
-          console.error('[Form] API error:', error)
+          if (error.details) {
+            console.error('[Form] Error details:', error.details)
+          }
         } catch (e) {
           console.error('[Form] Failed to parse error response:', e)
           errorMessage = `服务器错误 (${response.status})`
@@ -85,22 +81,93 @@ export default function NewLearningPlanPage() {
         throw new Error(errorMessage)
       }
 
-      const data = await response.json() as { planId: string; saved: boolean }
+      const data = await response.json() as { planId: string; outlines: any[]; saved: boolean }
       
-      if (data.saved && data.planId) {
-        // 生成成功，显示成功消息
-        toast.success('学习计划生成成功!即将跳转到学习计划列表...')
-        // 延迟跳转,避免模块加载问题
-        setTimeout(() => {
-          window.location.href = '/learn'
-        }, 500)
+      if (data.saved && data.planId && data.outlines) {
+        // 保存 planId 和大纲数据
+        setGeneratedPlanId(data.planId)
+        setPreviewOutlines(data.outlines)
+        
+        // 打开预览对话框
+        setIsOutlinePreviewOpen(true)
+        setIsGenerating(false)
+        
+        toast.success('学习大纲生成成功，请预览确认')
       } else {
-        throw new Error('保存失败')
+        throw new Error('生成失败：数据不完整')
       }
     } catch (error) {
       console.error('Generation failed:', error)
       toast.error(error instanceof Error ? error.message : 'AI 生成失败')
       setIsGenerating(false)
+    }
+  }
+
+  // 新增：接受大纲并跳转
+  const handleAcceptOutline = () => {
+    if (!generatedPlanId) {
+      toast.error('计划ID丢失')
+      return
+    }
+
+    toast.success('学习计划已创建！即将跳转...')
+    
+    // 关闭预览对话框
+    setIsOutlinePreviewOpen(false)
+    
+    // 延迟跳转
+    setTimeout(() => {
+      window.location.href = '/learn'
+    }, 500)
+  }
+
+  // 新增：重新生成大纲
+  const handleRegenerateOutline = async (feedback: string) => {
+    if (!feedback.trim()) {
+      return
+    }
+
+    setIsRegeneratingOutline(true)
+    
+    try {
+      const requestBody = {
+        planId: generatedPlanId, // 使用已创建的计划ID
+        topic,
+        goal: goal || undefined,
+        level,
+        additionalContext: additionalContext 
+          ? `${additionalContext}\n\n用户反馈：${feedback}`
+          : `用户反馈：${feedback}`,
+        modelId: selectedModelId,
+        depth, // 新增：传递层级深度
+      }
+
+      console.log('[Regenerate] Request body:', requestBody)
+
+      const response = await fetch('/api/learning-outline/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      })
+
+      if (!response.ok) {
+        const error = await response.json() as { error?: string }
+        throw new Error(error.error || '重新生成失败')
+      }
+
+      const data = await response.json() as { outlines: any[] }
+      
+      // 更新预览大纲
+      setPreviewOutlines(data.outlines)
+      
+      toast.success('大纲已重新生成')
+    } catch (error) {
+      console.error('Regenerate failed:', error)
+      toast.error(error instanceof Error ? error.message : '重新生成失败')
+    } finally {
+      setIsRegeneratingOutline(false)
     }
   }
 
@@ -151,13 +218,11 @@ export default function NewLearningPlanPage() {
                 学习主题
               </Label>
               <div className="relative">
-                <BookOpen className="absolute left-3 top-3 w-5 h-5 text-[var(--color-text-muted)]" />
                 <Input
                   id="topic"
                   placeholder="例如：JavaScript、机器学习、产品设计..."
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
-                  className="pl-10"
                   required
                   disabled={isGenerating}
                 />
@@ -170,16 +235,35 @@ export default function NewLearningPlanPage() {
                 学习目标（可选）
               </Label>
               <div className="relative">
-                <Target className="absolute left-3 top-3 w-5 h-5 text-[var(--color-text-muted)]" />
                 <Textarea
                   id="goal"
                   placeholder="描述您想要达成的目标，例如：能够独立开发一个完整的Web应用..."
                   value={goal}
                   onChange={(e) => setGoal(e.target.value)}
-                  className="pl-10 min-h-[100px]"
+                  className="min-h-[100px]"
                   disabled={isGenerating}
                 />
               </div>
+            </div>
+
+            {/* 新增：补充描述 */}
+            <div className="space-y-2">
+              <Label htmlFor="additionalContext">
+                补充描述（可选）
+              </Label>
+              <div className="relative">
+                <Textarea
+                  id="additionalContext"
+                  placeholder="例如：需要循序渐进，从基础到进阶；包含实战项目案例；重点讲解核心概念..."
+                  value={additionalContext}
+                  onChange={(e) => setAdditionalContext(e.target.value)}
+                  className="min-h-[80px]"
+                  disabled={isGenerating}
+                />
+              </div>
+              <p className="text-xs text-[var(--color-text-muted)]">
+                提供更多细节可以帮助 AI 生成更符合您需求的学习计划
+              </p>
             </div>
 
             {/* 难度级别 */}
@@ -203,6 +287,37 @@ export default function NewLearningPlanPage() {
                     </p>
                     <p className="text-xs text-[var(--color-text-secondary)] mt-1">
                       {l.description}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 新增：大纲层级选择 */}
+            <div className="space-y-2">
+              <Label>大纲层级</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {[
+                  { value: 1, label: '1级', description: '只生成主章节' },
+                  { value: 2, label: '2级', description: '章节+小节' },
+                  { value: 3, label: '3级', description: '章节+小节+细节' },
+                ].map((d) => (
+                  <button
+                    key={d.value}
+                    type="button"
+                    onClick={() => setDepth(d.value)}
+                    disabled={isGenerating}
+                    className={`p-4 rounded-xl border-2 text-left transition-all cursor-pointer ${
+                      depth === d.value
+                        ? "border-[var(--color-primary)] bg-[var(--color-primary)]/5"
+                        : "border-gray-200 hover:border-gray-300"
+                    }`}
+                  >
+                    <p className="font-medium text-[var(--color-text)]">
+                      {d.label}
+                    </p>
+                    <p className="text-xs text-[var(--color-text-secondary)] mt-1">
+                      {d.description}
                     </p>
                   </button>
                 ))}
@@ -245,6 +360,22 @@ export default function NewLearningPlanPage() {
       <div className="text-center text-sm text-[var(--color-text-muted)]">
         <p>AI将为您生成：学习计划 → 详细大纲 → 知识内容 → 测试题目</p>
       </div>
+
+      {/* 新增：大纲预览对话框 */}
+      {isOutlinePreviewOpen && (
+        <OutlinePreviewDialog
+          isOpen={isOutlinePreviewOpen}
+          onClose={() => {
+            setIsOutlinePreviewOpen(false)
+            setPreviewOutlines([])
+            setGeneratedPlanId(null)
+          }}
+          onAccept={handleAcceptOutline}
+          onRegenerate={handleRegenerateOutline}
+          outlines={previewOutlines}
+          isRegenerating={isRegeneratingOutline}
+        />
+      )}
     </div>
   )
 }

@@ -294,11 +294,10 @@ export function DocumentTree({
           )}
           aria-label={isCollapsed ? "展开文档树" : "收起文档树"}
         >
-          {isCollapsed ? (
-            <ChevronRight className="w-4 h-4 text-[var(--color-text)]" />
-          ) : (
-            <ChevronDown className="w-4 h-4 text-[var(--color-text)]" />
-          )}
+          <ChevronRight className={cn(
+            "w-4 h-4 text-[var(--color-text)] transition-transform",
+            !isCollapsed && "rotate-180"
+          )} />
         </button>
       </div>
 

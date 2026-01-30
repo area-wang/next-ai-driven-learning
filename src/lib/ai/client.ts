@@ -22,7 +22,7 @@ export interface AIClient {
   chatStream(options: AIStreamOptions): Promise<ReadableStream<string>>
 }
 
-export type AIProvider = 'openai' | 'deepseek' | 'gemini' | 'claude' | 'cloudflare'
+export type AIProvider = 'openai' | 'deepseek' | 'gemini' | 'claude' | 'cloudflare' | 'custom'
 
 /**
  * OpenAI 客户端（支持 ChatGPT）
@@ -39,7 +39,7 @@ export class OpenAIClient implements AIClient {
   }
 
   async chat(options: AIStreamOptions): Promise<string> {
-    const { messages, temperature = 0.7, maxTokens = 2000 } = options
+    const { messages, temperature = 0.7, maxTokens = 100000 } = options
 
     try {
       // 构建请求头对象
@@ -70,7 +70,13 @@ export class OpenAIClient implements AIClient {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({})) as { error?: { message?: string } }
         const errorMessage = errorData.error?.message || response.statusText
-        throw new Error(`OpenAI API error: ${errorMessage}`)
+        console.error('[AI Client] API 调用失败:', {
+          baseURL: this.baseURL,
+          model: this.model,
+          status: response.status,
+          error: errorMessage,
+        })
+        throw new Error(`AI API 错误 (${this.model}): ${errorMessage}`)
       }
 
       const data = await response.json() as {
@@ -88,7 +94,7 @@ export class OpenAIClient implements AIClient {
   }
 
   async chatStream(options: AIStreamOptions): Promise<ReadableStream<string>> {
-    const { messages, temperature = 0.7, maxTokens = 2000 } = options
+    const { messages, temperature = 0.7, maxTokens = 100000 } = options
 
     // 构建请求头对象
     const headersObj: Record<string, string> = {
@@ -117,7 +123,13 @@ export class OpenAIClient implements AIClient {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({})) as { error?: { message?: string } }
       const errorMessage = errorData.error?.message || response.statusText
-      throw new Error(`OpenAI API error: ${errorMessage}`)
+      console.error('[AI Client] Stream API 调用失败:', {
+        baseURL: this.baseURL,
+        model: this.model,
+        status: response.status,
+        error: errorMessage,
+      })
+      throw new Error(`AI API 错误 (${this.model}): ${errorMessage}`)
     }
 
     const reader = response.body?.getReader()
@@ -197,7 +209,7 @@ export class GeminiClient implements AIClient {
   }
 
   async chat(options: AIStreamOptions): Promise<string> {
-    const { messages, temperature = 0.7, maxTokens = 2000 } = options
+    const { messages, temperature = 0.7, maxTokens = 100000 } = options
 
     try {
       // 转换消息格式
@@ -247,7 +259,7 @@ export class GeminiClient implements AIClient {
   }
 
   async chatStream(options: AIStreamOptions): Promise<ReadableStream<string>> {
-    const { messages, temperature = 0.7, maxTokens = 2000 } = options
+    const { messages, temperature = 0.7, maxTokens = 100000 } = options
 
     const contents = messages
       .filter(m => m.role !== 'system')
@@ -340,7 +352,7 @@ export class ClaudeClient implements AIClient {
   }
 
   async chat(options: AIStreamOptions): Promise<string> {
-    const { messages, temperature = 0.7, maxTokens = 2000 } = options
+    const { messages, temperature = 0.7, maxTokens = 100000 } = options
 
     try {
       // 提取 system 消息
@@ -378,7 +390,7 @@ export class ClaudeClient implements AIClient {
   }
 
   async chatStream(options: AIStreamOptions): Promise<ReadableStream<string>> {
-    const { messages, temperature = 0.7, maxTokens = 2000 } = options
+    const { messages, temperature = 0.7, maxTokens = 100000 } = options
 
     const systemMessage = messages.find(m => m.role === 'system')?.content
     const conversationMessages = messages.filter(m => m.role !== 'system')
@@ -471,7 +483,7 @@ export class CloudflareAIClient implements AIClient {
   }
 
   async chat(options: AIStreamOptions): Promise<string> {
-    const { messages, temperature = 0.7, maxTokens = 2000 } = options
+    const { messages, temperature = 0.7, maxTokens = 100000 } = options
 
     try {
       const response = await this.ai.run(this.model, {
@@ -488,7 +500,7 @@ export class CloudflareAIClient implements AIClient {
   }
 
   async chatStream(options: AIStreamOptions): Promise<ReadableStream<string>> {
-    const { messages, temperature = 0.7, maxTokens = 2000 } = options
+    const { messages, temperature = 0.7, maxTokens = 100000 } = options
 
     const stream = await this.ai.run(this.model, {
       messages,

@@ -4,6 +4,7 @@ import * as React from "react"
 import { useEditor, EditorContent, type Editor } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
 import Link from "@tiptap/extension-link"
+import Underline from "@tiptap/extension-underline"
 import Placeholder from "@tiptap/extension-placeholder"
 import TaskList from "@tiptap/extension-task-list"
 import TaskItem from "@tiptap/extension-task-item"
@@ -22,6 +23,7 @@ import { DragDropExtension } from "./drag-drop-extension"
 import { PasteExtension } from "./paste-extension"
 import { UploadProgress } from "./upload-progress"
 import { Vimeo } from "./vimeo-extension"
+import { GenericVideo } from "./generic-video-extension"
 import { SlashCommand, slashCommandSuggestion } from "./slash-command"
 import { BubbleMenuToolbar } from "./bubble-menu-toolbar"
 import { TableMenu } from "./table-menu"
@@ -29,6 +31,7 @@ import { Callout } from "./callout-extension"
 import { ResizableImage, ResizableVideo } from "./resizable-media-extension"
 import { CustomCodeBlock } from "./code-block-extension"
 import { AIFloatingInput } from "./ai-floating-input"
+import { FloatingInput } from "./floating-input"
 import { Details, Summary } from "./details-extension"
 import { SimilarQuestionButton } from "./similar-question-button-extension"
 
@@ -70,6 +73,15 @@ export function TiptapEditor({
   const [isAIInputOpen, setIsAIInputOpen] = React.useState(false)
   const [aiAnchorElement, setAiAnchorElement] = React.useState<HTMLElement | null>(null)
   const [aiContext, setAiContext] = React.useState("")
+  const [floatingInput, setFloatingInput] = React.useState<{
+    isOpen: boolean
+    type: 'link' | 'image' | 'video' | 'inline-math' | 'block-math'
+    defaultValue?: string
+    anchorElement?: HTMLElement | null
+  }>({
+    isOpen: false,
+    type: 'link',
+  })
   const editorRef = React.useRef<Editor | null>(null)
 
   // 当外部 title 改变时，更新本地 title
@@ -111,6 +123,125 @@ export function TiptapEditor({
     document.addEventListener("openAIPrompt", handleOpenAIPrompt)
     return () => {
       document.removeEventListener("openAIPrompt", handleOpenAIPrompt)
+    }
+  }, [])
+
+  // 监听打开图片对话框的事件
+  React.useEffect(() => {
+    const handleOpenImageDialog = () => {
+      if (editorRef.current) {
+        const view = editorRef.current.view
+        const pos = view.state.selection.from
+        const coords = view.coordsAtPos(pos)
+        
+        const anchorEl = document.createElement('div')
+        anchorEl.style.position = 'fixed'
+        anchorEl.style.left = `${coords.left}px`
+        anchorEl.style.top = `${coords.top}px`
+        document.body.appendChild(anchorEl)
+        
+        setFloatingInput({
+          isOpen: true,
+          type: 'image',
+          anchorElement: anchorEl,
+        })
+      }
+    }
+
+    document.addEventListener("openImageDialog", handleOpenImageDialog)
+    return () => {
+      document.removeEventListener("openImageDialog", handleOpenImageDialog)
+    }
+  }, [])
+
+  // 监听打开视频对话框的事件
+  React.useEffect(() => {
+    const handleOpenVideoDialog = () => {
+      if (editorRef.current) {
+        const view = editorRef.current.view
+        const pos = view.state.selection.from
+        const coords = view.coordsAtPos(pos)
+        
+        const anchorEl = document.createElement('div')
+        anchorEl.style.position = 'fixed'
+        anchorEl.style.left = `${coords.left}px`
+        anchorEl.style.top = `${coords.top}px`
+        document.body.appendChild(anchorEl)
+        
+        setFloatingInput({
+          isOpen: true,
+          type: 'video',
+          anchorElement: anchorEl,
+        })
+      }
+    }
+
+    document.addEventListener("openVideoDialog", handleOpenVideoDialog)
+    return () => {
+      document.removeEventListener("openVideoDialog", handleOpenVideoDialog)
+    }
+  }, [])
+
+  // 监听打开数学公式输入框的事件
+  React.useEffect(() => {
+    const handleOpenMathInput = (event: Event) => {
+      const customEvent = event as CustomEvent
+      const type = customEvent.detail?.type || 'inline'
+      
+      if (editorRef.current) {
+        const view = editorRef.current.view
+        const pos = view.state.selection.from
+        const coords = view.coordsAtPos(pos)
+        
+        const anchorEl = document.createElement('div')
+        anchorEl.style.position = 'fixed'
+        anchorEl.style.left = `${coords.left}px`
+        anchorEl.style.top = `${coords.top}px`
+        document.body.appendChild(anchorEl)
+        
+        setFloatingInput({
+          isOpen: true,
+          type: type === 'inline' ? 'inline-math' : 'block-math',
+          anchorElement: anchorEl,
+        })
+      }
+    }
+
+    document.addEventListener("openMathInput", handleOpenMathInput)
+    return () => {
+      document.removeEventListener("openMathInput", handleOpenMathInput)
+    }
+  }, [])
+
+  // 监听打开链接输入框的事件（来自 bubble-menu）
+  React.useEffect(() => {
+    const handleOpenLinkInput = (event: Event) => {
+      const customEvent = event as CustomEvent
+      const defaultValue = customEvent.detail?.defaultValue || ''
+      
+      if (editorRef.current) {
+        const view = editorRef.current.view
+        const pos = view.state.selection.from
+        const coords = view.coordsAtPos(pos)
+        
+        const anchorEl = document.createElement('div')
+        anchorEl.style.position = 'fixed'
+        anchorEl.style.left = `${coords.left}px`
+        anchorEl.style.top = `${coords.top}px`
+        document.body.appendChild(anchorEl)
+        
+        setFloatingInput({
+          isOpen: true,
+          type: 'link',
+          defaultValue,
+          anchorElement: anchorEl,
+        })
+      }
+    }
+
+    document.addEventListener("openLinkInput", handleOpenLinkInput)
+    return () => {
+      document.removeEventListener("openLinkInput", handleOpenLinkInput)
     }
   }, [])
 
@@ -160,6 +291,7 @@ export function TiptapEditor({
         listItem: false, // 禁用 StarterKit 的 listItem，使用自定义的
         link: false, // 禁用 StarterKit 的 link，使用自定义的
       }),
+      Underline,
       BulletList.configure({
         HTMLAttributes: {
           class: "list-disc pl-6 my-4",
@@ -197,6 +329,11 @@ export function TiptapEditor({
         },
       }),
       Vimeo.configure({
+        HTMLAttributes: {
+          class: "rounded-lg overflow-hidden my-4",
+        },
+      }),
+      GenericVideo.configure({
         HTMLAttributes: {
           class: "rounded-lg overflow-hidden my-4",
         },
@@ -330,11 +467,70 @@ export function TiptapEditor({
     }
   }, [editor, onEditorReady])
 
+  const handleFloatingInputSubmit = React.useCallback((value: string) => {
+    if (!editor) return
+
+    if (floatingInput.type === 'link') {
+      if (value === "") {
+        editor.chain().focus().extendMarkRange("link").unsetLink().run()
+      } else {
+        editor.chain().focus().extendMarkRange("link").setLink({ href: value }).run()
+      }
+    } else if (floatingInput.type === 'image') {
+      if (value) {
+        editor.commands.insertContent({
+          type: 'resizableImage',
+          attrs: {
+            src: value,
+            alt: '',
+            width: null,
+            align: 'left',
+          },
+        })
+      }
+    } else if (floatingInput.type === 'video') {
+      if (value) {
+        // 检测视频类型
+        const detectVideoType = (url: string): 'youtube' | 'vimeo' | 'generic' | null => {
+          if (url.includes('youtube.com') || url.includes('youtu.be')) {
+            return 'youtube'
+          }
+          if (url.includes('vimeo.com')) {
+            return 'vimeo'
+          }
+          if (url.includes('bilibili.com') || url.includes('b23.tv') || 
+              url.includes('v.qq.com') || url.includes('youku.com') || 
+              url.includes('iqiyi.com')) {
+            return 'generic'
+          }
+          return null
+        }
+
+        const type = detectVideoType(value)
+        if (type === 'youtube') {
+          editor.commands.setYoutubeVideo({ src: value })
+        } else if (type === 'vimeo') {
+          editor.commands.setVimeoVideo({ src: value })
+        } else if (type === 'generic') {
+          editor.commands.setGenericVideo({ src: value, type: 'bilibili' })
+        }
+      }
+    } else if (floatingInput.type === 'inline-math') {
+      if (value) {
+        editor.chain().focus().setMath({ latex: value, display: false }).run()
+      }
+    } else if (floatingInput.type === 'block-math') {
+      if (value) {
+        editor.chain().focus().setBlockMath({ latex: value }).run()
+      }
+    }
+  }, [editor, floatingInput.type])
+
   return (
     <>
       <div className={cn("flex-1 flex flex-col bg-white overflow-hidden", className)}>
         <div className="flex-1 overflow-y-auto">
-          <div className="max-w-4xl mx-auto px-8 py-12">
+          <div className="max-w-full px-8 py-12">
             {/* 标题输入框 */}
             <input
               type="text"
@@ -380,6 +576,48 @@ export function TiptapEditor({
         }}
         onGenerate={handleAIGenerate}
         anchorElement={aiAnchorElement}
+      />
+
+      {/* 通用悬浮输入框 */}
+      <FloatingInput
+        isOpen={floatingInput.isOpen}
+        onClose={() => {
+          setFloatingInput({ ...floatingInput, isOpen: false })
+          // 清理锚点元素
+          if (floatingInput.anchorElement && floatingInput.anchorElement.parentNode) {
+            floatingInput.anchorElement.parentNode.removeChild(floatingInput.anchorElement)
+          }
+          // 触发关闭事件，通知气泡工具栏可以重新显示
+          setTimeout(() => {
+            const event = new CustomEvent("floatingInputClosed")
+            document.dispatchEvent(event)
+          }, 100)
+        }}
+        onSubmit={handleFloatingInputSubmit}
+        placeholder={
+          floatingInput.type === 'link'
+            ? "输入链接 URL..."
+            : floatingInput.type === 'image'
+            ? "输入图片 URL..."
+            : floatingInput.type === 'video'
+            ? "输入视频链接..."
+            : floatingInput.type === 'inline-math'
+            ? "输入 LaTeX 公式（行内）..."
+            : "输入 LaTeX 公式（块级）..."
+        }
+        defaultValue={floatingInput.defaultValue}
+        title={
+          floatingInput.type === 'link'
+            ? "插入链接"
+            : floatingInput.type === 'image'
+            ? "插入图片"
+            : floatingInput.type === 'video'
+            ? "嵌入视频"
+            : floatingInput.type === 'inline-math'
+            ? "插入行内公式"
+            : "插入块级公式"
+        }
+        anchorElement={floatingInput.anchorElement}
       />
     </>
   )

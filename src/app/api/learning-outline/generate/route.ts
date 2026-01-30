@@ -1,15 +1,11 @@
-/**
- * 学习大纲生成 API
- * 生成学习大纲并保存到数据库
- */
-
 import { NextRequest, NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
 import { getDbClient } from '@/lib/db-connection'
 import { learningPlans, learningOutlines, knowledgeContents } from '@/db/schema'
-import { createAIClientFromRequest } from '@/lib/ai/config-client'
 import { generateOutlinePrompt, type OutlineInput } from '@/lib/ai/prompts'
-import { type AIClient } from '@/lib/ai/client'
+import { type AIClient, OpenAIClient } from '@/lib/ai/client'
+import { getUserIdOrDemo } from '@/lib/auth/get-user'
+import { getAIConfig } from '@/lib/ai/get-ai-config'
 
 interface GenerateRequest {
   planId?: string // 添加 planId 参数
@@ -17,8 +13,9 @@ interface GenerateRequest {
   topic: string
   goal?: string
   level: 'beginner' | 'intermediate' | 'advanced'
-  userId?: string
+  additionalContext?: string // 添加补充描述参数
   modelId?: string // 指定使用的模型ID
+  depth?: number // 新增：大纲层级深度（1-3）
 }
 
 interface OutlineItem {
@@ -36,8 +33,9 @@ interface OutlineResponse {
 
 export async function POST(request: NextRequest) {
   try {
+    const userId = await getUserIdOrDemo()
     const body = await request.json() as GenerateRequest
-    const { planId, parentId, topic, goal, level, userId = 'demo-user', modelId } = body
+    const { planId, parentId, topic, goal, level, additionalContext, modelId, depth } = body
 
     console.log('[API] Learning outline generate request:', {
       planId,
@@ -45,8 +43,10 @@ export async function POST(request: NextRequest) {
       topic,
       goal,
       level,
+      additionalContext,
       userId,
       modelId,
+      depth,
     })
 
     if (!topic) {
@@ -56,40 +56,26 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 从配置创建 AI 客户端
-    console.log('[API] Creating AI client from config...')
+    // 获取 AI 配置
+    console.log('[API] Getting AI config...')
     let aiClient: AIClient
     try {
-      // 如果提供了 modelId，使用指定的模型
-      if (modelId) {
-        const { OpenAIClient } = await import('@/lib/ai/client')
-        
-        // 从环境变量读取 OpenRouter API Key（安全）
-        const apiKey = process.env.OPENROUTER_API_KEY
-        if (!apiKey) {
-          throw new Error('未配置 OPENROUTER_API_KEY 环境变量')
-        }
-        
-        const modelConfigHeader = request.headers.get('x-model-config')
-        if (modelConfigHeader) {
-          const modelConfig = JSON.parse(modelConfigHeader)
-          // 使用环境变量中的 API Key
-          aiClient = new OpenAIClient(
-            apiKey,
-            modelConfig.model,
-            modelConfig.baseUrl || 'https://openrouter.ai/api/v1'
-          )
-        } else {
-          throw new Error('未提供模型配置，请确保客户端正确传递了模型信息')
-        }
-      } else {
-        // 使用默认配置
-        aiClient = createAIClientFromRequest(request)
-      }
-    } catch (clientError) {
-      console.error('[API] Failed to create AI client:', clientError)
+      const config = await getAIConfig(request as unknown as Request, userId, modelId)
+      console.log('[API] AI config:', {
+        hasApiKey: !!config.apiKey,
+        baseUrl: config.baseUrl,
+        model: config.model,
+      })
+
+      aiClient = new OpenAIClient(
+        config.apiKey,
+        config.model,
+        config.baseUrl
+      )
+    } catch (configError) {
+      console.error('[API] Failed to get AI config:', configError)
       return NextResponse.json(
-        { error: `${clientError instanceof Error ? clientError.message : '创建 AI 客户端失败'}` },
+        { error: `${configError instanceof Error ? configError.message : '获取 AI 配置失败'}` },
         { status: 500 }
       )
     }
@@ -99,6 +85,8 @@ export async function POST(request: NextRequest) {
       topic,
       goal,
       level,
+      additionalContext,
+      depth, // 新增：传递层级深度
     }
     const prompt = generateOutlinePrompt(input)
     console.log('[API] Generated prompt length:', prompt.length)
@@ -115,7 +103,7 @@ export async function POST(request: NextRequest) {
           },
         ],
         temperature: 0.7,
-        maxTokens: 3000,
+        maxTokens: 100000,
       })
       console.log('[API] AI response received, length:', response.length)
       console.log('[API] AI response preview:', response.slice(0, 200))
@@ -130,18 +118,93 @@ export async function POST(request: NextRequest) {
     // 解析 AI 响应
     let outlineData: OutlineResponse
     try {
-      const jsonMatch = response.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        outlineData = JSON.parse(jsonMatch[0])
-        console.log('[API] Parsed outline items:', outlineData.outline?.length)
-      } else {
-        console.error('[API] No JSON found in response:', response.slice(0, 200))
-        throw new Error('无法解析 AI 响应')
+      // 输出原始响应用于调试
+      console.log('[API] Raw AI response length:', response.length)
+      console.log('[API] Raw AI response (first 1000 chars):', response.slice(0, 1000))
+      console.log('[API] Raw AI response (last 500 chars):', response.slice(-500))
+      
+      // 清理响应：移除 Markdown 代码块标记
+      let cleanedResponse = response.trim()
+      
+      // 移除开头的 ```json 或 ```
+      cleanedResponse = cleanedResponse.replace(/^```(?:json)?\s*\n?/i, '')
+      
+      // 移除结尾的 ```
+      cleanedResponse = cleanedResponse.replace(/\n?```\s*$/i, '')
+      
+      console.log('[API] Cleaned response length:', cleanedResponse.length)
+      console.log('[API] Cleaned response (first 1000 chars):', cleanedResponse.slice(0, 1000))
+      console.log('[API] Cleaned response (last 500 chars):', cleanedResponse.slice(-500))
+      
+      // 先尝试直接解析清理后的响应
+      try {
+        outlineData = JSON.parse(cleanedResponse)
+        console.log('[API] ✅ Parsed outline directly, items:', outlineData.outline?.length)
+      } catch (parseError) {
+        console.error('[API] ❌ Direct parse failed:', parseError)
+        console.error('[API] Parse error details:', {
+          message: parseError instanceof Error ? parseError.message : 'Unknown error',
+          name: parseError instanceof Error ? parseError.name : 'Unknown',
+        })
+        
+        // 如果直接解析失败，尝试提取JSON对象
+        const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          console.log('[API] Found JSON match, length:', jsonMatch[0].length)
+          console.log('[API] JSON match (first 1000 chars):', jsonMatch[0].slice(0, 1000))
+          console.log('[API] JSON match (last 500 chars):', jsonMatch[0].slice(-500))
+          
+          try {
+            outlineData = JSON.parse(jsonMatch[0])
+            console.log('[API] ✅ Parsed outline from match, items:', outlineData.outline?.length)
+          } catch (matchError) {
+            console.error('[API] ❌ Match parse failed:', matchError)
+            console.error('[API] Match parse error details:', {
+              message: matchError instanceof Error ? matchError.message : 'Unknown error',
+              name: matchError instanceof Error ? matchError.name : 'Unknown',
+            })
+            
+            // 尝试找到 JSON 中的问题位置
+            if (matchError instanceof SyntaxError && matchError.message.includes('position')) {
+              const posMatch = matchError.message.match(/position (\d+)/)
+              if (posMatch) {
+                const errorPos = parseInt(posMatch[1])
+                const contextStart = Math.max(0, errorPos - 100)
+                const contextEnd = Math.min(jsonMatch[0].length, errorPos + 100)
+                console.error('[API] Error context:', jsonMatch[0].slice(contextStart, contextEnd))
+                console.error('[API] Error position marker:', ' '.repeat(errorPos - contextStart) + '^')
+              }
+            }
+            
+            throw new Error(`JSON解析失败: ${matchError instanceof Error ? matchError.message : '未知错误'}`)
+          }
+        } else {
+          console.error('[API] ❌ No JSON found in response')
+          throw new Error('AI响应中未找到有效的JSON格式')
+        }
       }
+      
+      // 验证响应格式
+      if (!outlineData.outline || !Array.isArray(outlineData.outline)) {
+        console.error('[API] ❌ Invalid outline format:', outlineData)
+        throw new Error('AI响应格式错误：缺少outline数组')
+      }
+      
+      if (outlineData.outline.length === 0) {
+        console.error('[API] ❌ Empty outline array')
+        throw new Error('AI响应格式错误：outline数组为空')
+      }
+      
+      console.log('[API] ✅ Successfully parsed outline with', outlineData.outline.length, 'items')
     } catch (error) {
       console.error('[API] Failed to parse AI response:', error)
+      console.error('[API] Raw response:', response.slice(0, 1000))
       return NextResponse.json(
-        { error: 'AI 响应格式错误' },
+        { 
+          error: 'AI 响应格式错误',
+          details: error instanceof Error ? error.message : '无法解析AI响应',
+          rawResponse: response.slice(0, 500) // 返回部分原始响应用于调试
+        },
         { status: 500 }
       )
     }
@@ -195,8 +258,6 @@ export async function POST(request: NextRequest) {
       }
 
       // 递归保存大纲项和内容
-      const savedOutlines: any[] = []
-      
       const saveOutlineItems = async (
         items: OutlineItem[],
         currentParentId: string | null = null,

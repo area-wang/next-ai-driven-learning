@@ -10,11 +10,11 @@ const textareaVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-white/90 backdrop-blur-sm border border-[var(--color-secondary)] focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20",
+          "bg-white/90 backdrop-blur-sm border border-gray-300 focus:border-[var(--color-primary)]",
         glass:
-          "bg-white/60 backdrop-blur-md border border-white/30 focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20",
+          "bg-white/60 backdrop-blur-md border border-white/30 focus:border-[var(--color-primary)]",
         outline:
-          "bg-transparent border-2 border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20",
+          "bg-transparent border-2 border-[var(--color-primary)] focus:border-[var(--color-primary-dark)]",
       },
     },
     defaultVariants: {

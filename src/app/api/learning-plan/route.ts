@@ -6,12 +6,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDbClient } from '@/lib/db-connection'
 import { learningPlans } from '@/db/schema'
 import { eq, desc } from 'drizzle-orm'
+import { getUserIdOrDemo } from '@/lib/auth/get-user'
 
 // 获取用户的学习计划列表
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
-    const userId = searchParams.get('userId') || 'demo-user' // 默认使用 demo-user
+    const userId = await getUserIdOrDemo()
 
     const db = getDbClient(request)
     if (!db) {
@@ -50,17 +50,18 @@ export async function GET(request: NextRequest) {
 // 创建学习计划
 export async function POST(request: NextRequest) {
   try {
+    const userId = await getUserIdOrDemo()
+    
     const body = await request.json() as {
-      userId: string
       title: string
       description?: string
       topic: string
       goal?: string
       level?: string
     }
-    const { userId, title, description, topic, goal, level } = body
+    const { title, description, topic, goal, level } = body
 
-    if (!userId || !title || !topic) {
+    if (!title || !topic) {
       return NextResponse.json(
         { error: '缺少必要参数' },
         { status: 400 }

@@ -6,7 +6,7 @@
 
 import { useState } from 'react'
 import { Loader2, Sparkles, Target, Clock, BookOpen } from 'lucide-react'
-import { useAIConfig } from '@/hooks/use-ai-config'
+import { ConfiguredModelSelector } from '@/components/ai/configured-model-selector'
 
 interface LearningPlanPhase {
   title: string
@@ -30,7 +30,6 @@ interface LearningPlanGeneratorProps {
 }
 
 export function LearningPlanGenerator({ userId, onPlanGenerated }: LearningPlanGeneratorProps) {
-  const { config, hasApiKey } = useAIConfig()
   const [topic, setTopic] = useState('')
   const [goal, setGoal] = useState('')
   const [level, setLevel] = useState<'beginner' | 'intermediate' | 'advanced'>('beginner')
@@ -38,8 +37,7 @@ export function LearningPlanGenerator({ userId, onPlanGenerated }: LearningPlanG
   const [isGenerating, setIsGenerating] = useState(false)
   const [generatedPlan, setGeneratedPlan] = useState<LearningPlan | null>(null)
   const [error, setError] = useState<string | null>(null)
-
-  const needsApiKey = config.provider !== 'cloudflare' && !hasApiKey()
+  const [selectedModelId, setSelectedModelId] = useState<string>('')
 
   const handleGenerate = async () => {
     if (!topic.trim()) {
@@ -52,24 +50,17 @@ export function LearningPlanGenerator({ userId, onPlanGenerated }: LearningPlanG
     setGeneratedPlan(null)
 
     try {
-      const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-      }
-
-      if (config.provider !== 'cloudflare' && hasApiKey()) {
-        headers['x-api-key'] = config.apiKeys[config.provider] || ''
-      }
-
       const response = await fetch('/api/learning-plan/generate', {
         method: 'POST',
-        headers,
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           topic: topic.trim(),
           goal: goal.trim() || undefined,
           level,
           duration: duration.trim() || undefined,
-          provider: config.provider,
-          model: config.model,
+          modelId: selectedModelId, // 传递 modelId 给后端
           userId,
         }),
       })
@@ -99,6 +90,17 @@ export function LearningPlanGenerator({ userId, onPlanGenerated }: LearningPlanG
         </h2>
 
         <div className="space-y-4">
+          {/* 模型选择器 */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+              选择模型
+            </label>
+            <ConfiguredModelSelector
+              value={selectedModelId}
+              onChange={setSelectedModelId}
+            />
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
               学习主题 *
@@ -155,16 +157,6 @@ export function LearningPlanGenerator({ userId, onPlanGenerated }: LearningPlanG
             </div>
           </div>
 
-          {needsApiKey && (
-            <div className="p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg text-sm text-orange-800 dark:text-orange-200">
-              当前模型需要 API Key。请前往{' '}
-              <a href="/settings/ai" className="underline font-medium cursor-pointer">
-                设置页面
-              </a>{' '}
-              配置，或切换到免费的 Cloudflare AI。
-            </div>
-          )}
-
           {error && (
             <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-800 dark:text-red-200">
               {error}
@@ -173,7 +165,7 @@ export function LearningPlanGenerator({ userId, onPlanGenerated }: LearningPlanG
 
           <button
             onClick={handleGenerate}
-            disabled={isGenerating || needsApiKey || !topic.trim()}
+            disabled={isGenerating || !topic.trim() || !selectedModelId}
             className="w-full px-6 py-3 bg-teal-600 hover:bg-teal-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white rounded-lg font-medium transition-colors disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2"
           >
             {isGenerating ? (

@@ -10,8 +10,8 @@ import { TiptapEditor } from "@/components/editor/tiptap-editor"
 import { DocumentTree, DocumentNode } from "@/components/editor/document-tree"
 import { ContentOutline } from "@/components/editor/content-outline"
 import { AIGenerateDialog, type GenerateParams } from "@/components/editor/ai-generate-dialog"
+import { ConfiguredModelSelector } from "@/components/ai/configured-model-selector"
 import { type Editor } from "@tiptap/react"
-import { useAIConfig } from "@/hooks/use-ai-config"
 import { Sparkles, Loader2 } from "lucide-react"
 import { useToast } from "@/components/ui/toast-container"
 
@@ -20,7 +20,7 @@ export default function TestEditorPage() {
   const [isAIDialogOpen, setIsAIDialogOpen] = React.useState(false)
   const [aiParentDocId, setAIParentDocId] = React.useState<string | undefined>()
   const [isGenerating, setIsGenerating] = React.useState(false)
-  const { config, getApiKey } = useAIConfig()
+  const [selectedModelId, setSelectedModelId] = React.useState<string>('')
   const toast = useToast()
   // 文档数据结构：包含标题和内容
   const [documentContents, setDocumentContents] = React.useState<Record<string, { title: string; content: string }>>({
@@ -217,25 +217,16 @@ export default function TestEditorPage() {
     setIsGenerating(true)
     try {
       // 调用 AI 生成 API
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      }
-
-      // 添加 API Key（如果有）
-      const apiKey = getApiKey(config.provider)
-      if (apiKey) {
-        headers['x-api-key'] = apiKey
-      }
-
       const response = await fetch('/api/learning-outline/generate', {
         method: 'POST',
-        headers,
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           topic: params.topic,
           goal: params.goal,
           level: params.level,
-          provider: config.provider,
-          model: config.model,
+          modelId: selectedModelId, // 传递 modelId 给后端
         }),
       })
 
@@ -342,7 +333,7 @@ export default function TestEditorPage() {
     } finally {
       setIsGenerating(false)
     }
-  }, [config, getApiKey, toast])
+  }, [selectedModelId, toast])
 
   // 打开 AI 生成对话框
   const openAIDialog = React.useCallback((parentId?: string) => {
@@ -358,25 +349,33 @@ export default function TestEditorPage() {
           文档编辑器
         </h1>
         
-        {/* AI 生成按钮 */}
-        <button
-          type="button"
-          onClick={() => openAIDialog()}
-          disabled={isGenerating}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 text-white font-medium hover:from-purple-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isGenerating ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              生成中...
-            </>
-          ) : (
-            <>
-              <Sparkles className="w-4 h-4" />
-              AI 生成内容
-            </>
-          )}
-        </button>
+        <div className="flex items-center gap-4">
+          {/* 模型选择器 */}
+          <ConfiguredModelSelector
+            value={selectedModelId}
+            onChange={setSelectedModelId}
+          />
+          
+          {/* AI 生成按钮 */}
+          <button
+            type="button"
+            onClick={() => openAIDialog()}
+            disabled={isGenerating}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 text-white font-medium hover:from-purple-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                生成中...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4" />
+                AI 生成内容
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* 主体区域：文档树 + 编辑器 */}

@@ -4,9 +4,10 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createAIClientFromRequest } from '@/lib/ai/config-client'
 import { generateTestQuestionsPrompt, type TestQuestionsInput } from '@/lib/ai/prompts'
-import { type AIClient } from '@/lib/ai/client'
+import { type AIClient, OpenAIClient } from '@/lib/ai/client'
+import { getUserIdOrDemo } from '@/lib/auth/get-user'
+import { getAIConfig } from '@/lib/ai/get-ai-config'
 
 interface GenerateRequest {
   topic: string
@@ -34,6 +35,8 @@ interface TestQuestionsResponse {
 
 export async function POST(request: NextRequest) {
   try {
+    const userId = await getUserIdOrDemo()
+    
     const body = await request.json() as GenerateRequest
     const {
       topic,
@@ -57,6 +60,7 @@ export async function POST(request: NextRequest) {
       questionCount,
       questionTypes,
       modelId,
+      userId,
     })
 
     if (!topic) {
@@ -80,40 +84,26 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 从配置创建 AI 客户端
-    console.log('[API] Creating AI client from config...')
+    // 获取 AI 配置
+    console.log('[API] Getting AI config...')
     let aiClient: AIClient
     try {
-      // 如果提供了 modelId，使用指定的模型
-      if (modelId) {
-        const { OpenAIClient } = await import('@/lib/ai/client')
-        
-        // 从环境变量读取 OpenRouter API Key（安全）
-        const apiKey = process.env.OPENROUTER_API_KEY
-        if (!apiKey) {
-          throw new Error('未配置 OPENROUTER_API_KEY 环境变量')
-        }
-        
-        const modelConfigHeader = request.headers.get('x-model-config')
-        if (modelConfigHeader) {
-          const modelConfig = JSON.parse(modelConfigHeader)
-          // 使用环境变量中的 API Key
-          aiClient = new OpenAIClient(
-            apiKey,
-            modelConfig.model,
-            modelConfig.baseUrl || 'https://openrouter.ai/api/v1'
-          )
-        } else {
-          throw new Error('未提供模型配置，请确保客户端正确传递了模型信息')
-        }
-      } else {
-        // 使用默认配置
-        aiClient = createAIClientFromRequest(request)
-      }
-    } catch (clientError) {
-      console.error('[API] Failed to create AI client:', clientError)
+      const config = await getAIConfig(request as unknown as Request, userId, modelId)
+      console.log('[API] AI config:', {
+        hasApiKey: !!config.apiKey,
+        baseUrl: config.baseUrl,
+        model: config.model,
+      })
+
+      aiClient = new OpenAIClient(
+        config.apiKey,
+        config.model,
+        config.baseUrl
+      )
+    } catch (configError) {
+      console.error('[API] Failed to get AI config:', configError)
       return NextResponse.json(
-        { error: `${clientError instanceof Error ? clientError.message : '创建 AI 客户端失败'}` },
+        { error: `${configError instanceof Error ? configError.message : '获取 AI 配置失败'}` },
         { status: 500 }
       )
     }
@@ -144,7 +134,7 @@ export async function POST(request: NextRequest) {
           },
         ],
         temperature: 0.3,
-        maxTokens: 4000,
+        maxTokens: 100000,
       })
       console.log('[API] AI response received, length:', response.length)
       console.log('[API] AI response preview:', response.slice(0, 200))

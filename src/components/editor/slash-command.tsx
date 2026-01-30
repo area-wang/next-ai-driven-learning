@@ -173,55 +173,14 @@ export const slashCommandItems: SlashCommandItem[] = [
   },
   {
     title: "图片",
-    description: "插入图片",
+    description: "插入图片（支持在线图片和上传）",
     icon: "Image",
     command: ({ editor, range }) => {
       editor.chain().focus().deleteRange(range).run()
       
-      // 创建文件选择器
-      const input = document.createElement('input')
-      input.type = 'file'
-      input.accept = 'image/*'
-      input.onchange = async (e) => {
-        const file = (e.target as HTMLInputElement).files?.[0]
-        if (!file) return
-
-        try {
-          // 上传图片
-          const formData = new FormData()
-          formData.append('file', file)
-
-          const response = await fetch('/api/upload', {
-            method: 'POST',
-            body: formData,
-          })
-
-          if (!response.ok) {
-            throw new Error('上传失败')
-          }
-
-          const data = await response.json() as { url: string }
-
-          // 插入可调整大小的图片
-          editor.commands.insertContent({
-            type: 'resizableImage',
-            attrs: {
-              src: data.url,
-              alt: file.name,
-              width: null,
-              align: 'left',
-            },
-          })
-        } catch (error) {
-          console.error('图片上传失败:', error)
-          // 触发 toast 通知
-          const event = new CustomEvent("showToast", {
-            detail: { type: 'error', message: '图片上传失败，请重试' },
-          })
-          document.dispatchEvent(event)
-        }
-      }
-      input.click()
+      // 触发打开图片插入对话框的事件
+      const event = new CustomEvent("openImageDialog")
+      document.dispatchEvent(event)
     },
   },
   {
@@ -278,18 +237,14 @@ export const slashCommandItems: SlashCommandItem[] = [
   },
   {
     title: "嵌入视频",
-    description: "嵌入 YouTube/Vimeo 视频",
+    description: "嵌入主流视频平台视频",
     icon: "Youtube",
     command: ({ editor, range }) => {
       editor.chain().focus().deleteRange(range).run()
-      const url = window.prompt("输入视频URL (YouTube/Vimeo):")
-      if (url) {
-        if (url.includes("youtube.com") || url.includes("youtu.be")) {
-          editor.commands.setYoutubeVideo({ src: url })
-        } else if (url.includes("vimeo.com")) {
-          editor.commands.setVimeoVideo({ src: url })
-        }
-      }
+      
+      // 触发打开视频嵌入对话框的事件
+      const event = new CustomEvent("openVideoDialog")
+      document.dispatchEvent(event)
     },
   },
   {
@@ -311,10 +266,12 @@ export const slashCommandItems: SlashCommandItem[] = [
     icon: "Sigma",
     command: ({ editor, range }) => {
       editor.chain().focus().deleteRange(range).run()
-      const latex = window.prompt("输入 LaTeX 公式:")
-      if (latex) {
-        editor.chain().focus().setMath({ latex, display: false }).run()
-      }
+      
+      // 触发打开数学公式输入框的事件
+      const event = new CustomEvent("openMathInput", {
+        detail: { type: 'inline' },
+      })
+      document.dispatchEvent(event)
     },
   },
   {
