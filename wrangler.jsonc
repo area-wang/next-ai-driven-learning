@@ -26,11 +26,11 @@
 			"database_id": "fd40c8a0-8e6f-4a09-bf16-8b6e24648720",
 			"migrations_dir": "drizzle"
 		}
-	],
-	"r2_buckets": [
-		{
-			"binding": "STORAGE",
-			"bucket_name": "ai-learning-platform-files"
-		}
 	]
+	// "r2_buckets": [
+	// 	{
+	// 		"binding": "STORAGE",
+	// 		"bucket_name": "ai-learning-platform-files"
+	// 	}
+	// ]
 }
