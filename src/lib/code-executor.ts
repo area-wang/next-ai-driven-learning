@@ -95,12 +95,6 @@ export async function executeCode(
     throw new Error(`不支持的语言: ${language}`)
   }
 
-  console.log('[Piston API] 准备执行代码:', {
-    language: langInfo.pistonId,
-    version: langInfo.version,
-    codeLength: code.length,
-  })
-
   try {
     const requestBody = {
       language: langInfo.pistonId,
@@ -113,8 +107,6 @@ export async function executeCode(
       ],
     }
 
-    console.log('[Piston API] 请求体:', requestBody)
-
     const response = await fetch(`${PISTON_API_URL}/execute`, {
       method: 'POST',
       headers: {
@@ -123,8 +115,6 @@ export async function executeCode(
       body: JSON.stringify(requestBody),
     })
 
-    console.log('[Piston API] 响应状态:', response.status, response.statusText)
-
     if (!response.ok) {
       const errorText = await response.text()
       console.error('[Piston API] 错误响应:', errorText)
@@ -132,12 +122,8 @@ export async function executeCode(
     }
 
     const data = await response.json() as PistonResponse
-    console.log('[Piston API] 响应数据:', data)
 
     // 检查是否有错误信号
-    if (data.run?.signal) {
-      console.warn('[Piston API] 执行信号:', data.run.signal)
-    }
 
     // 使用 output 字段作为主要输出（Piston API 会合并 stdout 和 stderr）
     const stdout = data.run?.stdout || data.run?.output || ''

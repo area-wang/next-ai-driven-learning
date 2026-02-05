@@ -28,6 +28,7 @@ export default function NewLearningPlanPage() {
   const [depth, setDepth] = React.useState<number>(2) // 新增：大纲层级，默认2级
   const [isGenerating, setIsGenerating] = React.useState(false)
   const [selectedModelId, setSelectedModelId] = React.useState<string | undefined>(undefined)
+  const [enableWebSearch, setEnableWebSearch] = React.useState(false)
   
   // 新增：大纲预览相关状态
   const [isOutlinePreviewOpen, setIsOutlinePreviewOpen] = React.useState(false)
@@ -53,6 +54,7 @@ export default function NewLearningPlanPage() {
         additionalContext: additionalContext || undefined, // 新增：传递补充描述
         modelId: selectedModelId,
         depth, // 新增：传递层级深度
+        enableWebSearch, // 传递联网搜索开关
       }
 
       console.log('[Form] Request body:', requestBody)
@@ -140,6 +142,7 @@ export default function NewLearningPlanPage() {
           : `用户反馈：${feedback}`,
         modelId: selectedModelId,
         depth, // 新增：传递层级深度
+        enableWebSearch, // 传递联网搜索开关
       }
 
       console.log('[Regenerate] Request body:', requestBody)
@@ -330,6 +333,20 @@ export default function NewLearningPlanPage() {
               <p className="text-sm text-[var(--color-text-secondary)]">
                 AI将根据您的目标和级别，自动规划合理的学习时间
               </p>
+            </div>
+
+            {/* 联网搜索开关 */}
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700 dark:text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={enableWebSearch}
+                  onChange={(e) => setEnableWebSearch(e.target.checked)}
+                  className="w-4 h-4 text-teal-600 border-slate-300 rounded focus:ring-teal-500 cursor-pointer"
+                />
+                <span>🌐 使用联网搜索</span>
+              </label>
+              <span className="text-xs text-slate-500">搜索最新信息</span>
             </div>
 
             {/* 提交按钮 */}

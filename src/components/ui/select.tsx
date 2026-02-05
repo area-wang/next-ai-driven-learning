@@ -59,13 +59,13 @@ export function Select({
         type="button"
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
-        className="w-full flex items-center justify-between px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors focus:outline-none focus:border-primary disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full flex items-center justify-between px-3 py-2 border border-[var(--color-border-light)] rounded-md bg-white/80 backdrop-blur-md text-[var(--color-text)] hover:bg-white transition-colors focus:outline-none focus:border-[var(--color-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <span className="text-sm truncate">
           {selectedOption ? selectedOption.label : placeholder}
         </span>
         <ChevronDown 
-          className={`w-4 h-4 text-gray-500 dark:text-gray-400 transition-transform flex-shrink-0 ml-2 ${
+          className={`w-4 h-4 text-[var(--color-text-secondary)] transition-transform flex-shrink-0 ml-2 ${
             isOpen ? 'rotate-180' : ''
           }`} 
         />
@@ -78,7 +78,7 @@ export function Select({
             onClick={() => setIsOpen(false)}
           />
           <div 
-            className={`absolute left-0 right-0 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg z-50 max-h-60 overflow-y-auto ${
+            className={`absolute left-0 right-0 bg-white/95 backdrop-blur-md border border-[var(--color-border-light)] rounded-md shadow-lg z-50 max-h-60 overflow-y-auto ${
               dropdownPosition === 'top' ? 'bottom-full mb-1' : 'top-full mt-1'
             }`}
           >
@@ -87,15 +87,15 @@ export function Select({
                 key={option.value}
                 type="button"
                 onClick={() => handleSelect(option.value)}
-                className={`w-full flex items-center justify-between px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors first:rounded-t-md last:rounded-b-md ${
-                  value === option.value ? 'bg-gray-100 dark:bg-gray-700' : ''
+                className={`w-full flex items-center justify-between px-3 py-2 text-left hover:bg-white/80 transition-colors first:rounded-t-md last:rounded-b-md ${
+                  value === option.value ? 'bg-white/60' : ''
                 }`}
               >
-                <span className="text-sm text-gray-900 dark:text-white truncate">
+                <span className="text-sm text-[var(--color-text)] truncate">
                   {option.label}
                 </span>
                 {value === option.value && (
-                  <Check className="w-4 h-4 text-primary flex-shrink-0 ml-2" />
+                  <Check className="w-4 h-4 text-[var(--color-primary)] flex-shrink-0 ml-2" />
                 )}
               </button>
             ))}

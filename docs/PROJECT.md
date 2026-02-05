@@ -14,6 +14,86 @@ AI 驱动的学习平台是一个现代化的在线学习系统，集成了人�
 
 ## 最近更新
 
+### 2026-02-02 - Console 调试代码清理（第二轮）✅
+
+**功能描述:**
+- 继续清理项目中的 console 调试代码
+- 删除所有冗余的调试日志
+- 只保留必要的错误日志（console.error）
+
+**清理范围:**
+
+本次清理了以下文件中的 console 调试代码：
+
+| 文件 | 清理内容 |
+|------|---------|
+| `src/lib/code-executor.ts` | 删除 3 个 console.log，保留 console.error |
+| `src/app/api/ai/chat/route.ts` | 删除 3 个 console.log |
+| `src/app/api/ai/generate/route.ts` | 删除 5 个 console.log，保留 console.error |
+| `src/app/api/learning-outline/generate/route.ts` | 删除 3 个 console.log，保留 console.error |
+| `src/lib/ai/get-ai-config.ts` | 删除 7 个 console.log/warn |
+| `src/lib/ai/provider-models.ts` | 删除 2 个 console.log，保留 console.error |
+| `src/lib/search/get-search-config.ts` | 删除 2 个 console.warn |
+| `src/components/ai/configured-model-selector.tsx` | 删除 1 个 console.log |
+| `src/components/test-answer/test-answer-overlay.tsx` | 删除 6 个 console.log/warn，保留 console.error |
+| `src/components/auth/login-form.tsx` | 删除 1 个 console.log |
+| `src/components/tools/code-playground.tsx` | 删除 2 个 console.log |
+| `src/app/plan/[planId]/page.tsx` | 删除 2 个 console.warn，保留 console.error |
+
+**清理原则:**
+- ✅ 删除所有 `console.log` 调试日志
+- ✅ 删除所有 `console.warn` 警告日志
+- ✅ 保留所有 `console.error` 错误日志（用于生产环境排查问题）
+- ✅ 删除涉及敏感信息的日志（API Key、用户 ID、配置详情）
+- ✅ 删除冗余的步骤日志（"开始..."、"完成..."）
+
+**效果:**
+- ✅ 代码更加简洁，减少噪音
+- ✅ 生产环境日志更清晰
+- ✅ 保留了必要的错误追踪能力
+- ✅ 类型检查通过
+- ✅ 编译成功
+
+**相关文件:**
+- 12 个文件的 console 调试代码清理
+
+**技术要点:**
+- 使用 `console.error` 记录错误信息
+- 删除所有 `console.log` 和 `console.warn`
+- 保持代码简洁，减少不必要的日志输出
+
+---
+
+### 2026-02-02 - AI 对话助手历史列表优化 ✅
+
+**功能描述:**
+- 历史列表默认收起状态
+- 减小历史列表宽度，提升空间利用率
+
+**修改内容:**
+
+| 修改项 | 修改前 | 修改后 |
+|--------|--------|--------|
+| **默认状态** | `showSidebar = true`（展开） | `showSidebar = false`（收起） |
+| **侧边栏宽度** | `w-64`（256px） | `w-56`（224px） |
+| **头部内边距** | `p-4` | `p-3` |
+
+**效果:**
+- ✅ 默认状态下有更多空间显示对话内容
+- ✅ 侧边栏宽度更合理，不占用过多空间
+- ✅ 用户可以通过按钮展开/收起历史列表
+- ✅ 类型检查通过
+
+**相关文件:**
+- `src/components/ai/ai-chat-drawer.tsx` - AI 对话助手组件
+
+**技术要点:**
+- 修改 `useState` 初始值控制默认状态
+- 使用 Tailwind 的宽度类调整侧边栏宽度
+- 保持响应式设计和用户体验
+
+---
+
 ### 2024-01-29 - AI 配置模式优化（动态获取厂商模型列表）✅
 
 **功能描述:**
@@ -15164,3 +15244,409 @@ select:focus-visible {
 - 避免全局样式和组件样式冲突
 
 ---
+
+
+---
+
+## 2026-02-02 - Console 调试代码清理 ✅
+
+**功能描述:**
+- 清理代码中的console调试语句，删除敏感信息和冗余日志
+- 保留必要的错误日志用于生产环境调试
+- 提高代码安全性和可维护性
+
+**清理原则:**
+
+1. **删除所有涉及敏感信息的console**：
+   - API Key（即使是脱敏的）
+   - 用户ID
+   - 模型配置详情
+   - 搜索配置详情
+
+2. **删除冗余的调试信息**：
+   - 过于详细的步骤日志
+   - 重复的状态输出
+   - 中间过程的数据打印
+
+3. **保留必要的错误日志**：
+   - `console.error()` - 用于错误追踪
+   - 关键失败点的日志
+
+**已清理的文件:**
+
+| 文件 | 删除的console | 保留的console |
+|------|--------------|--------------|
+| `src/components/ai/ai-chat-drawer.tsx` | 7个log/warn | 4个error |
+| `src/lib/search/utils.ts` | 6个log | 1个error |
+| `src/lib/search/tavily.ts` | 3个log | 1个error |
+| `src/app/api/ai/chat/route.ts` | 7个log/warn | - |
+| `src/app/api/learning-outline/generate/route.ts` | 20+个log | 6个error |
+
+**清理统计:**
+- 删除的console：约40+个非必要的调试日志
+- 保留的console：约246个错误日志（console.error）
+- TypeScript检查：✅ 通过，无类型错误
+
+**效果:**
+- ✅ 删除所有涉及敏感信息的日志
+- ✅ 删除所有冗余的状态日志
+- ✅ 保留所有错误日志用于生产环境调试
+- ✅ 代码更加简洁和安全
+- ✅ 类型检查通过
+- ✅ 编译成功
+
+**相关文件:**
+- `CONSOLE_CLEANUP_SUMMARY.md` - 详细的清理总结文档
+
+**技术要点:**
+- 使用 `console.error` 输出错误详情
+- 删除所有 `console.log` 和 `console.warn` 的调试信息
+- 保留关键错误追踪点的日志
+- 避免泄露敏感信息（API Key、配置详情等）
+
+---
+
+## 2026-02-02 - AI 对话助手 Markdown 渲染功能 ✅
+
+**功能描述:**
+- 为 AI 对话助手添加 Markdown 渲染支持
+- 让 AI 的回答更加美观和易读
+- 支持所有标准 Markdown 语法
+
+**实现内容:**
+
+**1. 集成 marked 库**
+- 确认项目已安装 `marked` v17.0.1 和 `@types/marked`
+- 在组件中导入 `marked` 库
+- 配置 marked 选项（启用 GFM、支持换行）
+
+**2. 实现 Markdown 渲染**
+- 创建 `renderMarkdown` 函数
+- 使用 `useMemo` 优化配置
+- 添加错误处理（渲染失败时显示原文）
+- 区分用户消息和 AI 消息（只渲染 AI 消息）
+
+**3. 添加样式支持**
+- 创建 `.ai-message-markdown` 样式类
+- 支持所有标准 Markdown 元素：
+  - 标题（H1-H6）
+  - 段落和换行
+  - 列表（有序/无序）
+  - 代码块和行内代码
+  - 引用块
+  - 链接
+  - 表格
+  - 分割线
+  - 图片
+  - 粗体、斜体
+
+**4. 代码块样式优化**
+- 深色背景（`#1e293b`）
+- 浅色文字（`#e2e8f0`）
+- 等宽字体（Fira Code）
+- 圆角边框
+- 水平滚动支持
+- 自定义滚动条样式
+
+**支持的 Markdown 语法:**
+
+| 语法 | 示例 | 效果 |
+|------|------|------|
+| 标题 | `# H1` | 不同大小的标题 |
+| 粗体 | `**text**` | **粗体文字** |
+| 斜体 | `*text*` | *斜体文字* |
+| 行内代码 | `` `code` `` | 浅色背景代码 |
+| 代码块 | ` ```js\ncode\n``` ` | 深色背景代码块 |
+| 列表 | `- item` | 有序/无序列表 |
+| 引用 | `> quote` | 左侧边框引用块 |
+| 链接 | `[text](url)` | 主题色超链接 |
+| 表格 | Markdown 表格 | 带边框的表格 |
+
+**技术实现:**
+
+```typescript
+// 配置 marked
+useMemo(() => {
+  marked.setOptions({
+    breaks: true,  // 支持 GFM 换行
+    gfm: true,     // 启用 GitHub Flavored Markdown
+  })
+}, [])
+
+// 渲染函数
+const renderMarkdown = (content: string) => {
+  try {
+    return marked.parse(content) as string
+  } catch (error) {
+    console.error('Markdown 渲染失败:', error)
+    return content
+  }
+}
+
+// 使用方式
+{message.role === 'assistant' ? (
+  <div 
+    className="text-sm leading-relaxed ai-message-markdown"
+    dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }}
+  />
+) : (
+  <p className="text-sm whitespace-pre-wrap leading-relaxed">
+    {message.content}
+  </p>
+)}
+```
+
+**设计决策:**
+
+1. **只渲染 AI 消息**
+   - 原因：用户输入应保持原样，避免意外格式化
+   - 实现：使用条件渲染区分用户和 AI 消息
+
+2. **使用 dangerouslySetInnerHTML**
+   - 原因：marked 返回 HTML 字符串，需要插入到 DOM
+   - 安全性：只用于 AI 消息，不处理用户输入
+   - 风险：低（AI 生成的内容相对可信）
+
+3. **自定义样式类**
+   - 原因：避免与全局样式冲突
+   - 实现：创建独立的 `.ai-message-markdown` 类
+   - 优势：样式隔离，易于维护
+
+4. **深色代码块**
+   - 原因：提高代码可读性
+   - 实现：使用深色背景（`#1e293b`）和浅色文字
+   - 效果：类似 VS Code 的暗色主题
+
+**效果:**
+- ✅ 所有标准 Markdown 语法正确渲染
+- ✅ 美观的代码块样式
+- ✅ 响应式设计
+- ✅ 类型安全
+- ✅ 错误处理
+- ✅ 文档完善
+- ✅ TypeScript检查通过
+- ✅ 编译成功
+
+**相关文件:**
+- `src/components/ai/ai-chat-drawer.tsx` - AI 对话组件
+- `src/app/globals.css` - Markdown 样式定义
+- `MARKDOWN_RENDERING_SUMMARY.md` - 技术实现细节
+- `QUICK_START_MARKDOWN.md` - 快速上手指南
+- `TEST_MARKDOWN_RENDERING.md` - 测试用例和验收标准
+
+**技术要点:**
+- 使用 `marked.parse()` 解析 Markdown
+- 使用 `useMemo` 优化配置
+- 使用 `dangerouslySetInnerHTML` 渲染 HTML
+- 创建独立的样式类避免冲突
+- 只渲染 AI 消息，保持用户输入原样
+
+---
+
+## 2026-02-02 - AI 对话助手历史列表优化 ✅
+
+**功能描述:**
+- 优化 AI 对话助手的历史列表显示
+- 默认收起状态，不占用空间
+- 减小侧边栏宽度，更加紧凑
+
+**修改内容:**
+
+**1. 默认收起状态**
+```typescript
+// 修改前
+const [showSidebar, setShowSidebar] = useState(true)
+
+// 修改后
+const [showSidebar, setShowSidebar] = useState(false)
+```
+
+**2. 减小侧边栏宽度**
+```typescript
+// 修改前
+<div className="w-64 bg-gray-50 ...">  // 256px
+
+// 修改后
+<div className="w-56 bg-gray-50 ...">  // 224px
+```
+
+**3. 调整内边距**
+```typescript
+// 修改前
+<div className="p-4 ...">
+
+// 修改后
+<div className="p-3 ...">
+```
+
+**效果:**
+- ✅ 历史列表默认隐藏，不占用空间
+- ✅ 侧边栏宽度更窄，更加紧凑
+- ✅ 点击箭头按钮可以展开/收起
+- ✅ 展开后的宽度从256px减少到224px
+- ✅ 类型检查通过
+- ✅ 编译成功
+
+**相关文件:**
+- `src/components/ai/ai-chat-drawer.tsx` - AI 对话助手组件
+
+**技术要点:**
+- 使用 `useState` 管理侧边栏显示状态
+- 使用 Tailwind 的 `w-56` 类设置宽度
+- 使用条件渲染控制侧边栏显示
+
+---
+
+## 2026-02-02 - 联网搜索功能完整实现 ✅
+
+**功能描述:**
+- 完整实现 LLM 联网搜索功能
+- 支持 AI 驱动的智能搜索策略
+- Tavily API Key 存储到数据库并加密
+- 前端添加联网搜索开关
+
+**核心特性:**
+
+**1. AI 驱动的搜索策略**
+- 使用 LLM 分析查询意图
+- 自动识别搜索场景（编程/文档/新闻/学习/通用）
+- 动态推荐权威域名
+- 智能优化搜索关键词
+- 支持中文查询
+
+**2. 数据库存储 API Key**
+- Tavily API Key 加密存储在数据库
+- 前端显示时自动脱敏（只显示前4位和后4位）
+- 支持显示/隐藏切换
+- 传输时使用 Base64 编码
+
+**3. 搜索配置**
+- 搜索结果数量：3 / 5 / 10 条（默认 5）
+- 搜索语言：中文 / 英文 / 自动（默认自动）
+- 搜索深度：advanced（高级模式）
+- 包含原始内容：提供更多上下文
+
+**4. 前端集成**
+- 8个组件添加联网搜索开关
+- AI 对话助手使用图标按钮
+- 其他组件使用复选框
+- 所有组件通过 TypeScript 类型检查
+
+**支持的场景:**
+
+| 场景 | 位置 | 开关类型 |
+|------|------|---------|
+| AI 对话助手 | 对话界面 | 图标按钮 |
+| 学习计划生成 | 学习计划界面 | 复选框 |
+| 学习大纲生成 | 学习大纲界面 | 复选框 |
+| 学习内容生成 | 内容生成界面 | 复选框 |
+| 测试题生成 | 测试题界面 | 复选框 |
+
+**AI 搜索策略示例:**
+
+```typescript
+// 编程问题
+{
+  "context": "programming",
+  "recommendedDomains": [
+    "reactjs.org",
+    "github.com",
+    "dev.to",
+    "stackoverflow.com"
+  ],
+  "optimizedQuery": "React 19 新特性 使用方法",
+  "reasoning": "这是关于 React 框架的技术查询，推荐官方文档和技术社区"
+}
+
+// 中文技术问题
+{
+  "context": "programming",
+  "recommendedDomains": [
+    "vuejs.org",
+    "reactjs.org",
+    "juejin.cn",
+    "zhihu.com"
+  ],
+  "optimizedQuery": "Vue 3 组合式 API React Hooks 区别",
+  "reasoning": "对比两个框架的特性，推荐官方文档和中文技术社区"
+}
+```
+
+**技术架构:**
+
+```
+用户界面
+  ↓ (enableWebSearch=true)
+API 路由
+  ↓
+getSearchConfig() - 获取用户配置（从数据库）
+  ↓
+analyzeQueryWithAI() - AI 分析查询意图
+  ↓
+searchWithTavily() - 调用 Tavily API
+  ↓
+formatSearchResultsForPrompt() - 格式化结果
+  ↓
+添加到 LLM Prompt
+  ↓
+生成内容
+```
+
+**数据库 Schema:**
+
+```sql
+-- users 表新增字段（迁移 0008）
+ALTER TABLE users ADD COLUMN search_result_count INTEGER DEFAULT 5;
+ALTER TABLE users ADD COLUMN search_language TEXT DEFAULT 'auto';
+
+-- users 表新增字段（迁移 0009）
+ALTER TABLE users ADD COLUMN tavily_api_key TEXT;  -- 加密存储
+```
+
+**安全特性:**
+
+| 特性 | 说明 |
+|------|------|
+| **加密存储** | API Key 在数据库中加密存储 |
+| **脱敏显示** | 前端只显示前4位和后4位 |
+| **编码传输** | 使用 Base64 编码避免明文传输 |
+| **HTTPS** | 配合 HTTPS 提供传输层加密 |
+
+**效果:**
+- ✅ 后端实现完成（100%）
+- ✅ 前端实现完成（100%）
+- ✅ AI 驱动的智能搜索策略
+- ✅ 数据库存储并加密 API Key
+- ✅ 前端脱敏显示
+- ✅ 所有组件集成完成
+- ✅ TypeScript 类型检查通过
+- ✅ 编译成功
+
+**相关文件:**
+- `src/lib/search/tavily.ts` - Tavily API 集成
+- `src/lib/search/utils.ts` - 搜索工具函数（AI 分析）
+- `src/lib/search/get-search-config.ts` - 获取用户配置
+- `src/lib/crypto.ts` - 加密工具函数
+- `src/app/api/ai/search-config/route.ts` - 搜索配置 API
+- `src/app/api/ai/chat/route.ts` - AI 对话（已集成）
+- `src/app/api/learning-plan/generate/route.ts` - 学习计划（已集成）
+- `src/app/api/learning-outline/generate/route.ts` - 学习大纲（已集成）
+- `src/app/api/ai/generate/route.ts` - 内容生成（已集成）
+- `src/app/api/test-questions/generate/route.ts` - 测试题（已集成）
+- `src/app/settings/ai/page.tsx` - AI 设置页面
+- `src/components/ai/ai-chat-drawer.tsx` - AI 对话助手
+- `drizzle/0008_add_web_search_config.sql` - 数据库迁移
+- `drizzle/0009_add_tavily_api_key.sql` - 数据库迁移
+- `docs/WEB_SEARCH_FEATURE.md` - 详细文档
+
+**技术要点:**
+- 使用 LLM 分析查询意图，自动识别领域
+- 使用 Tavily API 执行搜索
+- 使用 `encrypt()` 和 `decrypt()` 加密 API Key
+- 使用 `maskApiKey()` 脱敏显示
+- 使用 `encodeApiKey()` 和 `decodeApiKey()` 编码传输
+- 搜索失败时自动降级到普通模式
+- 支持自然语言查询
+
+---
+

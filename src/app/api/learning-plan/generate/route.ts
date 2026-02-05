@@ -10,6 +10,8 @@ import { getAIConfig } from '@/lib/ai/get-ai-config'
 import { OpenAIClient } from '@/lib/ai/client'
 import { generateLearningPlanPrompt, type LearningPlanInput } from '@/lib/ai/prompts'
 import { getCurrentUserId } from '@/lib/auth/get-user'
+import { performSearch, extractSearchQuery } from '@/lib/search/utils'
+import { getSearchConfig } from '@/lib/search/get-search-config'
 
 interface GenerateRequest {
   topic: string
@@ -18,6 +20,7 @@ interface GenerateRequest {
   duration?: string
   userId?: string
   modelId?: string
+  enableWebSearch?: boolean // 是否启用联网搜索
 }
 
 interface LearningPlanResponse {
@@ -35,7 +38,7 @@ interface LearningPlanResponse {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as GenerateRequest
-    const { topic, goal, level, duration, userId, modelId } = body
+    const { topic, goal, level, duration, userId, modelId, enableWebSearch = false } = body
 
     if (!topic) {
       return NextResponse.json(
@@ -50,6 +53,42 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '未授权' }, { status: 401 })
     }
 
+    // 处理联网搜索
+    let searchResults = ''
+    if (enableWebSearch) {
+      try {
+        console.log('[Learning Plan API] 联网搜索已启用')
+        
+        // 获取 AI 配置（用于搜索意图分析）
+        let aiConfig
+        try {
+          const config = await getAIConfig(request as unknown as Request, currentUserId, modelId)
+          aiConfig = {
+            apiKey: config.apiKey,
+            baseUrl: config.baseUrl,
+            model: config.model,
+          }
+        } catch (error) {
+          console.warn('[Learning Plan API] 无法获取 AI 配置用于搜索分析，将使用简单提取')
+        }
+        
+        // 获取用户的搜索配置
+        const searchConfig = await getSearchConfig(request as unknown as Request, currentUserId)
+        console.log('[Learning Plan API] 搜索配置:', searchConfig)
+        
+        // 构建搜索查询
+        const searchQuery = `${topic} 学习路径 学习计划 ${level} 教程`
+        console.log('[Learning Plan API] 搜索查询:', searchQuery)
+        
+        // 执行搜索（传递 AI 配置用于智能分析）
+        searchResults = await performSearch(searchQuery, searchConfig, aiConfig)
+        console.log('[Learning Plan API] 搜索完成，结果长度:', searchResults.length)
+      } catch (searchError) {
+        console.error('[Learning Plan API] 搜索失败，降级到普通模式:', searchError)
+        // 搜索失败不影响主流程
+      }
+    }
+
     // 获取 AI 配置
     const config = await getAIConfig(request as unknown as Request, currentUserId, modelId)
     const aiClient = new OpenAIClient(config.apiKey, config.model, config.baseUrl)
@@ -61,7 +100,12 @@ export async function POST(request: NextRequest) {
       level,
       duration,
     }
-    const prompt = generateLearningPlanPrompt(input)
+    let prompt = generateLearningPlanPrompt(input)
+    
+    // 如果有搜索结果，添加到 prompt
+    if (searchResults) {
+      prompt = `${searchResults}\n\n${prompt}`
+    }
 
     // 调用 AI 生成学习计划
     const response = await aiClient.chat({

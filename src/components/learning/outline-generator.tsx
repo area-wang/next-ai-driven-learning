@@ -29,6 +29,7 @@ export function OutlineGenerator({
   const [generatedOutline, setGeneratedOutline] = useState<OutlineItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [selectedModelId, setSelectedModelId] = useState<string>('')
+  const [enableWebSearch, setEnableWebSearch] = useState(false)
 
   const handleGenerate = async () => {
     if (!topic.trim()) {
@@ -52,6 +53,7 @@ export function OutlineGenerator({
           goal: goal.trim() || undefined,
           level,
           modelId: selectedModelId, // 传递 modelId 给后端
+          enableWebSearch, // 传递联网搜索开关
         }),
       })
 
@@ -137,6 +139,20 @@ export function OutlineGenerator({
               {error}
             </div>
           )}
+
+          {/* 联网搜索开关 */}
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700 dark:text-slate-300">
+              <input
+                type="checkbox"
+                checked={enableWebSearch}
+                onChange={(e) => setEnableWebSearch(e.target.checked)}
+                className="w-4 h-4 text-teal-600 border-slate-300 rounded focus:ring-teal-500 cursor-pointer"
+              />
+              <span>🌐 使用联网搜索</span>
+            </label>
+            <span className="text-xs text-slate-500">搜索最新信息</span>
+          </div>
 
           <button
             onClick={handleGenerate}

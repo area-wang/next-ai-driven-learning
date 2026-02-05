@@ -48,8 +48,6 @@ export function ConfiguredModelSelector({
           data?: Array<{ modelId: string; modelName: string; provider: string; isDefault: boolean }>
         }
 
-        console.log('[Model Selector] 加载模型配置:', result)
-
         if (result.success && result.data) {
           const modelList: ModelConfig[] = result.data.map(m => ({
             id: m.modelId,

@@ -7,6 +7,8 @@ import { NextRequest } from 'next/server'
 import { type AIMessage } from '@/lib/ai/client'
 import { getAIConfig } from '@/lib/ai/get-ai-config'
 import { getCurrentUserId } from '@/lib/auth/get-user'
+import { performSearch, extractSearchQuery } from '@/lib/search/utils'
+import { getSearchConfig } from '@/lib/search/get-search-config'
 
 interface ChatRequest {
   messages: AIMessage[]
@@ -14,12 +16,13 @@ interface ChatRequest {
   temperature?: number
   maxTokens?: number
   stream?: boolean
+  enableWebSearch?: boolean // 是否启用联网搜索
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as ChatRequest
-    const { messages, modelId, temperature, maxTokens, stream = true } = body
+    const { messages, modelId, temperature, maxTokens, stream = true, enableWebSearch = false } = body
 
     if (!messages || messages.length === 0) {
       return new Response(
@@ -37,16 +40,60 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // 处理联网搜索
+    let searchResults = ''
+    if (enableWebSearch) {
+      try {
+        // 获取 AI 配置（用于搜索意图分析）
+        let aiConfig
+        try {
+          const config = await getAIConfig(request as unknown as Request, userId, modelId)
+          aiConfig = {
+            apiKey: config.apiKey,
+            baseUrl: config.baseUrl,
+            model: config.model,
+          }
+        } catch (error) {
+          // 无法获取 AI 配置，将使用简单提取
+        }
+        
+        // 获取用户的搜索配置
+        const searchConfig = await getSearchConfig(request as unknown as Request, userId)
+        
+        // 提取最后一条用户消息作为搜索查询
+        const lastUserMessage = messages.filter(m => m.role === 'user').pop()
+        if (lastUserMessage) {
+          const searchQuery = lastUserMessage.content
+          
+          // 执行搜索（传递 AI 配置用于智能分析）
+          searchResults = await performSearch(searchQuery, searchConfig, aiConfig)
+        }
+      } catch (searchError) {
+        // 搜索失败不影响主流程，继续使用普通 LLM 调用
+      }
+    }
+
+    // 如果有搜索结果，将其添加到消息中
+    let finalMessages = messages
+    if (searchResults) {
+      // 在最后一条用户消息之前插入搜索结果
+      const messagesBeforeLast = messages.slice(0, -1)
+      const lastMessage = messages[messages.length - 1]
+      
+      finalMessages = [
+        ...messagesBeforeLast,
+        {
+          role: 'system' as const,
+          content: searchResults,
+        },
+        lastMessage,
+      ]
+    }
+
     // 获取 AI 配置（使用统一配置逻辑）
-    console.log('[AI Chat API] 获取 AI 配置...')
     let config
     try {
       config = await getAIConfig(request as unknown as Request, userId, modelId)
-      console.log('[AI Chat API] AI 配置:', {
-        hasApiKey: !!config.apiKey,
-        baseUrl: config.baseUrl,
-        model: config.model,
-      })
     } catch (configError) {
       console.error('[AI Chat API] 获取 AI 配置失败:', configError)
       return new Response(
@@ -57,7 +104,6 @@ export async function POST(request: NextRequest) {
 
     if (stream) {
       // 流式响应
-      console.log('[AI Chat API] 开始流式响应...')
       try {
         const response = await fetch(`${config.baseUrl}/chat/completions`, {
           method: 'POST',
@@ -71,7 +117,7 @@ export async function POST(request: NextRequest) {
           },
           body: JSON.stringify({
             model: config.model,
-            messages,
+            messages: finalMessages,
             temperature: temperature || 0.7,
             max_tokens: maxTokens || 100000,
             stream: true,
@@ -83,8 +129,6 @@ export async function POST(request: NextRequest) {
           console.error('[AI Chat API] AI API 错误:', response.status, errorText)
           throw new Error(`AI API error: ${response.statusText}`)
         }
-
-        console.log('[AI Chat API] 流式响应创建成功')
         
         // 直接返回原始的 SSE 流
         return new Response(response.body, {
@@ -100,7 +144,6 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // 非流式响应
-      console.log('[AI Chat API] 开始非流式响应...')
       const response = await fetch(`${config.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -113,7 +156,7 @@ export async function POST(request: NextRequest) {
         },
         body: JSON.stringify({
           model: config.model,
-          messages,
+          messages: finalMessages,
           temperature: temperature || 0.7,
           max_tokens: maxTokens || 100000,
           stream: false,
@@ -129,7 +172,6 @@ export async function POST(request: NextRequest) {
       const data = await response.json()
       const content = (data as any).choices?.[0]?.message?.content || ''
 
-      console.log('[AI Chat API] 非流式响应成功，长度:', content.length)
       return new Response(
         JSON.stringify({ response: content }),
         { headers: { 'Content-Type': 'application/json' } }

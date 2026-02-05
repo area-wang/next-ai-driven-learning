@@ -80,12 +80,10 @@ export function TestAnswerOverlay({
     const loadQuestions = async () => {
       try {
         // 优先从 API 读取题目
-        console.log('[答题] 开始从 API 读取题目，documentId:', documentId)
         const contentResponse = await fetch(`/api/learning-outline/${documentId}/content`)
         
         if (contentResponse.ok) {
           const contentData = await contentResponse.json() as { contentId: string }
-          console.log('[答题] 获取到 contentId:', contentData.contentId)
           
           const questionsResponse = await fetch(`/api/test-questions/${contentData.contentId}`)
           
@@ -93,7 +91,6 @@ export function TestAnswerOverlay({
             const data = await questionsResponse.json() as { questions: ParsedQuestion[] }
             if (data.questions && data.questions.length > 0) {
               // 从 API 成功读取题目
-              console.log('[答题] 从 API 成功读取', data.questions.length, '道题目')
               setState(prev => ({ ...prev, questions: data.questions }))
               
               // 尝试恢复答题进度

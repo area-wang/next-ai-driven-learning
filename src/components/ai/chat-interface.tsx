@@ -35,6 +35,7 @@ export function ChatInterface({
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [showModelSelector, setShowModelSelector] = useState(false)
+  const [enableWebSearch, setEnableWebSearch] = useState(false) // 联网搜索开关
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const currentModel = getModelInfo(config.provider, config.model)
@@ -105,6 +106,7 @@ export function ChatInterface({
           provider: config.provider,
           model: config.model,
           stream: true,
+          enableWebSearch, // 传递联网搜索开关状态
         }),
       })
 
@@ -268,6 +270,24 @@ export function ChatInterface({
             配置，或切换到免费的 Cloudflare AI。
           </div>
         )}
+
+        {/* 联网搜索开关 */}
+        <div className="mb-3 flex items-center gap-2">
+          <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700 dark:text-slate-300">
+            <input
+              type="checkbox"
+              checked={enableWebSearch}
+              onChange={(e) => setEnableWebSearch(e.target.checked)}
+              className="w-4 h-4 text-teal-600 border-slate-300 rounded focus:ring-teal-500 cursor-pointer"
+            />
+            <span className="flex items-center gap-1">
+              🌐 联网搜索
+            </span>
+          </label>
+          <span className="text-xs text-slate-500 dark:text-slate-400">
+            搜索最新信息
+          </span>
+        </div>
 
         <div className="flex gap-2">
           <textarea

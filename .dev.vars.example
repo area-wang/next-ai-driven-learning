@@ -32,3 +32,5 @@ GEMINI_API_KEY=your-gemini-api-key
 ANTHROPIC_API_KEY=your-anthropic-api-key
 OPENROUTER_API_KEY=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
 
+# Tavily Search API (用于联网搜索功能)
+TAVILY_API_KEY=your-tavily-api-key

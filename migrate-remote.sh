@@ -20,6 +20,8 @@ MIGRATION_FILES=(
   "0005_fancy_thing.sql"
   "0006_add_config_mode.sql"
   "0007_add_config_mode_to_ai_models.sql"
+  "0008_add_web_search_config.sql"
+  "0009_add_tavily_api_key.sql"
 )
 
 # 执行每个迁移文件

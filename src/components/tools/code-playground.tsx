@@ -32,9 +32,7 @@ export function CodePlayground({ onClose }: CodePlaygroundProps) {
     setOutput('执行中...')
 
     try {
-      console.log('[代码运行] 开始执行:', { language, codeLength: code.length })
       const result = await executeCode(language, code)
-      console.log('[代码运行] 执行结果:', result)
       
       let outputText = ''
       

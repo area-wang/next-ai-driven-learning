@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, KeyboardEvent } from 'react'
+import { useState, useRef, useEffect, KeyboardEvent, useMemo } from 'react'
 import { 
   Drawer, 
   DrawerContent, 
@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import { useToast } from '@/components/ui/toast-container'
 import { ConfiguredModelSelector } from './configured-model-selector'
+import { marked } from 'marked'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -54,12 +55,31 @@ export function AIChatDrawer({ open, onOpenChange }: AIChatDrawerProps) {
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [selectedModel, setSelectedModel] = useState<string>('')
-  const [showSidebar, setShowSidebar] = useState(true)
+  const [showSidebar, setShowSidebar] = useState(false)
   const [side, setSide] = useState<'left' | 'right'>('right')
   const [drawerWidth, setDrawerWidth] = useState(600)
+  const [enableWebSearch, setEnableWebSearch] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLDivElement>(null)
   const toast = useToast()
+
+  // 配置 marked
+  useMemo(() => {
+    marked.setOptions({
+      breaks: true, // 支持 GFM 换行
+      gfm: true, // 启用 GitHub Flavored Markdown
+    })
+  }, [])
+
+  // Markdown 渲染函数
+  const renderMarkdown = (content: string) => {
+    try {
+      return marked.parse(content) as string
+    } catch (error) {
+      console.error('Markdown 渲染失败:', error)
+      return content
+    }
+  }
 
   // 加载对话历史
   useEffect(() => {
@@ -227,19 +247,7 @@ export function AIChatDrawer({ open, onOpenChange }: AIChatDrawerProps) {
       updateConversationTitle(convId, userMessage.content)
     }
 
-    // 创建一个临时的 AI 消息用于流式更新
-    const assistantMessage: Message = {
-      role: 'assistant',
-      content: '',
-      timestamp: new Date(),
-    }
-    
-    const messagesWithAssistant = [...newMessages, assistantMessage]
-    setMessages(messagesWithAssistant)
-
     try {
-      console.log('[AI Chat] 发送请求，模型 ID:', selectedModel)
-
       const response = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: {
@@ -247,8 +255,9 @@ export function AIChatDrawer({ open, onOpenChange }: AIChatDrawerProps) {
         },
         body: JSON.stringify({
           messages: newMessages.map(m => ({ role: m.role, content: m.content })),
-          modelId: selectedModel, // 直接传递模型 ID，让后端处理配置
-          stream: true, // 使用流式响应
+          modelId: selectedModel,
+          stream: true,
+          enableWebSearch,
         }),
       })
 
@@ -257,26 +266,24 @@ export function AIChatDrawer({ open, onOpenChange }: AIChatDrawerProps) {
         throw new Error(errorData.error || 'AI 响应失败')
       }
 
-      console.log('[AI Chat] 开始处理流式响应...')
-
       // 处理流式响应
       const reader = response.body?.getReader()
       if (!reader) {
         throw new Error('无法读取响应流')
       }
 
-      console.log('[AI Chat] 流式响应 reader 创建成功')
-
       const decoder = new TextDecoder()
       let fullContent = ''
       let chunkCount = 0
       let buffer = '' // 用于缓存不完整的行
+      
+      // 创建 AI 消息（只在第一次收到内容时添加）
+      let assistantMessageAdded = false
 
       while (true) {
         const { done, value } = await reader.read()
         
         if (done) {
-          console.log('[AI Chat] 流式响应完成，总共接收', chunkCount, '个数据块，总长度:', fullContent.length)
           break
         }
 
@@ -322,28 +329,35 @@ export function AIChatDrawer({ open, onOpenChange }: AIChatDrawerProps) {
               if (content) {
                 fullContent += content
                 
+                // 第一次收到内容时，关闭 loading 并添加 AI 消息
+                if (!assistantMessageAdded) {
+                  setIsLoading(false)
+                  assistantMessageAdded = true
+                }
+                
                 // 实时更新消息内容
-                const updatedMessages = [...newMessages, {
-                  ...assistantMessage,
+                const assistantMessage: Message = {
+                  role: 'assistant',
                   content: fullContent,
-                }]
+                  timestamp: new Date(),
+                }
+                const updatedMessages = [...newMessages, assistantMessage]
                 setMessages(updatedMessages)
               }
             } catch (e) {
               // 忽略 JSON 解析错误（可能是不完整的数据）
-              console.warn('[AI Chat] JSON 解析失败:', data.substring(0, 100))
             }
           }
         }
       }
 
-      console.log('[AI Chat] 保存完整对话...')
-
       // 流式响应完成后，保存完整的对话
-      const finalMessages = [...newMessages, {
-        ...assistantMessage,
+      const assistantMessage: Message = {
+        role: 'assistant',
         content: fullContent,
-      }]
+        timestamp: new Date(),
+      }
+      const finalMessages = [...newMessages, assistantMessage]
 
       // 更新对话历史
       const updated = conversations.map(conv =>
@@ -353,8 +367,6 @@ export function AIChatDrawer({ open, onOpenChange }: AIChatDrawerProps) {
       )
       setConversations(updated)
       saveConversations(updated)
-      
-      console.log('[AI Chat] 对话保存成功')
     } catch (error) {
       console.error('发送消息失败:', error)
       toast.error(`发送消息失败: ${error instanceof Error ? error.message : '未知错误'}`)
@@ -372,9 +384,9 @@ export function AIChatDrawer({ open, onOpenChange }: AIChatDrawerProps) {
         <div className="flex h-full">
           {/* 左侧对话历史列表 */}
           {showSidebar && (
-            <div className="w-64 bg-gray-50 flex flex-col shadow-[2px_0_8px_rgba(0,0,0,0.08)]">
+            <div className="w-56 bg-gray-50 flex flex-col shadow-[2px_0_8px_rgba(0,0,0,0.08)]">
               {/* 侧边栏头部 */}
-              <div className="p-4 shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
+              <div className="p-3 shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
                 <Button
                   onClick={createNewConversation}
                   className="w-full"
@@ -513,9 +525,16 @@ export function AIChatDrawer({ open, onOpenChange }: AIChatDrawerProps) {
                             : 'bg-gray-100 text-gray-900'
                         }`}
                       >
-                        <p className="text-sm whitespace-pre-wrap leading-relaxed">
-                          {message.content}
-                        </p>
+                        {message.role === 'user' ? (
+                          <p className="text-sm whitespace-pre-wrap leading-relaxed">
+                            {message.content}
+                          </p>
+                        ) : (
+                          <div 
+                            className="text-sm leading-relaxed ai-message-markdown"
+                            dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }}
+                          />
+                        )}
                       </div>
                       {message.role === 'user' && (
                         <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
@@ -564,16 +583,32 @@ export function AIChatDrawer({ open, onOpenChange }: AIChatDrawerProps) {
                   {/* 底部工具栏 - 模型选择器（左）+ 按钮组（右） */}
                   <div className="flex items-center justify-between px-3 pb-3 pt-2 border-t border-gray-100">
                     {/* 左侧：模型选择器 */}
-                    <div className="flex-1 max-w-xs">
-                      <ConfiguredModelSelector
-                        showLabel={false}
-                        value={selectedModel}
-                        onChange={setSelectedModel}
-                      />
+                    <div className="flex items-center gap-3 flex-1">
+                      <div className="max-w-xs">
+                        <ConfiguredModelSelector
+                          showLabel={false}
+                          value={selectedModel}
+                          onChange={setSelectedModel}
+                        />
+                      </div>
                     </div>
 
                     {/* 右侧：工具按钮 */}
                     <div className="flex items-center gap-1 flex-shrink-0 ml-3">
+                      {/* 联网搜索按钮 */}
+                      <button
+                        onClick={() => setEnableWebSearch(!enableWebSearch)}
+                        className={`p-2 rounded-lg transition-colors ${
+                          enableWebSearch
+                            ? 'bg-primary/10 text-primary hover:bg-primary/20'
+                            : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
+                        }`}
+                        title={enableWebSearch ? '已启用联网搜索' : '启用联网搜索'}
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                        </svg>
+                      </button>
                       <button
                         className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-400 hover:text-gray-600"
                         title="附加文件"

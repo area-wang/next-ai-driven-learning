@@ -236,8 +236,6 @@ export async function fetchProviderModels(
       url = `${url}?key=${apiKey}`
     }
 
-    console.log(`[Provider Models] 获取 ${providerId} 模型列表: ${url}`)
-
     const response = await fetch(url, {
       method: 'GET',
       headers: config.headers(apiKey),
@@ -252,7 +250,6 @@ export async function fetchProviderModels(
     const data = await response.json()
     const models = config.parseResponse(data)
 
-    console.log(`[Provider Models] 成功获取 ${models.length} 个模型`)
     return models
   } catch (error) {
     console.error(`[Provider Models] 获取模型列表失败:`, error)

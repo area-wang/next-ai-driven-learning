@@ -40,13 +40,11 @@ function extractProviderId(modelId: string): string {
   
   for (const [providerId, pattern] of Object.entries(providerPatterns)) {
     if (pattern.test(modelId)) {
-      console.log(`[AI Config] 从模型 ID "${modelId}" 推断出厂商: ${providerId}`)
       return providerId
     }
   }
   
-  // 如果无法推断，返回原始 ID（可能会导致错误，但至少有日志）
-  console.warn(`[AI Config] 无法从模型 ID "${modelId}" 提取厂商 ID，返回原始值`)
+  // 如果无法推断，返回原始 ID
   return modelId
 }
 
@@ -148,15 +146,10 @@ export async function getAIConfig(
     finalModelId = defaultModel.modelId
   }
 
-  console.log(`[AI Config] 配置模式: ${configMode}`)
-  console.log(`[AI Config] 模型 ID: ${finalModelId}`)
-
   // 根据配置模式选择 API
   if (configMode === 'independent') {
     // 独立厂商模式：从模型 ID 中提取厂商 ID，使用该厂商的 API
     const providerId = extractProviderId(finalModelId)
-    
-    console.log(`[AI Config] 提取的厂商 ID: ${providerId}`)
     
     const providerConfig = await db
       .select()
@@ -176,11 +169,6 @@ export async function getAIConfig(
       const actualModelId = finalModelId.includes('/') 
         ? finalModelId.split('/')[1] 
         : finalModelId
-      
-      console.log(`[AI Config] 使用厂商独立配置: ${providerId}`)
-      console.log(`[AI Config] Base URL: ${providerConfig[0].baseUrl || getDefaultBaseUrl(providerId)}`)
-      console.log(`[AI Config] 原始模型 ID: ${finalModelId}`)
-      console.log(`[AI Config] 实际调用模型 ID: ${actualModelId}`)
       
       return {
         apiKey: providerConfig[0].apiKey,
@@ -207,8 +195,6 @@ export async function getAIConfig(
     .limit(1)
 
   if (openrouterConfig.length > 0 && openrouterConfig[0].apiKey) {
-    console.log('[AI Config] 使用 OpenRouter 统一配置')
-    console.log(`[AI Config] Model: ${finalModelId}`)
     return {
       apiKey: openrouterConfig[0].apiKey,
       baseUrl: openrouterConfig[0].baseUrl || 'https://openrouter.ai/api/v1',

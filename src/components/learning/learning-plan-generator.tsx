@@ -38,6 +38,7 @@ export function LearningPlanGenerator({ userId, onPlanGenerated }: LearningPlanG
   const [generatedPlan, setGeneratedPlan] = useState<LearningPlan | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [selectedModelId, setSelectedModelId] = useState<string>('')
+  const [enableWebSearch, setEnableWebSearch] = useState(false) // 联网搜索开关
 
   const handleGenerate = async () => {
     if (!topic.trim()) {
@@ -62,6 +63,7 @@ export function LearningPlanGenerator({ userId, onPlanGenerated }: LearningPlanG
           duration: duration.trim() || undefined,
           modelId: selectedModelId, // 传递 modelId 给后端
           userId,
+          enableWebSearch, // 传递联网搜索开关
         }),
       })
 
@@ -162,6 +164,24 @@ export function LearningPlanGenerator({ userId, onPlanGenerated }: LearningPlanG
               {error}
             </div>
           )}
+
+          {/* 联网搜索开关 */}
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700 dark:text-slate-300">
+              <input
+                type="checkbox"
+                checked={enableWebSearch}
+                onChange={(e) => setEnableWebSearch(e.target.checked)}
+                className="w-4 h-4 text-teal-600 border-slate-300 rounded focus:ring-teal-500 cursor-pointer"
+              />
+              <span className="flex items-center gap-1">
+                🌐 使用联网搜索
+              </span>
+            </label>
+            <span className="text-xs text-slate-500 dark:text-slate-400">
+              搜索最新学习资源
+            </span>
+          </div>
 
           <button
             onClick={handleGenerate}

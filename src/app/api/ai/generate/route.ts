@@ -2,12 +2,15 @@ import { NextRequest, NextResponse } from "next/server"
 import { type AIClient, OpenAIClient } from '@/lib/ai/client'
 import { getAIConfig } from '@/lib/ai/get-ai-config'
 import { getCurrentUserId } from '@/lib/auth/get-user'
+import { performSearch, extractSearchQuery } from '@/lib/search/utils'
+import { getSearchConfig } from '@/lib/search/get-search-config'
 
 interface GenerateRequest {
   prompt: string
   context?: string
   learningPlanTitle?: string
   modelId?: string // 指定使用的模型ID
+  enableWebSearch?: boolean // 是否启用联网搜索
 }
 
 // 简单的 Markdown 转 HTML 转换
@@ -92,13 +95,14 @@ function markdownToHtml(markdown: string): string {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as GenerateRequest
-    const { prompt, context, learningPlanTitle, modelId } = body
+    const { prompt, context, learningPlanTitle, modelId, enableWebSearch = false } = body
 
     console.log('[API] AI generate request:', {
       hasPrompt: !!prompt,
       hasContext: !!context,
       learningPlanTitle,
       modelId,
+      enableWebSearch,
     })
 
     if (!prompt) {
@@ -117,16 +121,39 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // 处理联网搜索
+    let searchResults = ''
+    if (enableWebSearch) {
+      try {
+        // 获取 AI 配置（用于搜索意图分析）
+        let aiConfig
+        try {
+          const config = await getAIConfig(request as unknown as Request, userId, modelId)
+          aiConfig = {
+            apiKey: config.apiKey,
+            baseUrl: config.baseUrl,
+            model: config.model,
+          }
+        } catch (error) {
+          // 无法获取 AI 配置，将使用简单提取
+        }
+        
+        // 获取用户的搜索配置
+        const searchConfig = await getSearchConfig(request as unknown as Request, userId)
+        
+        // 执行搜索（传递 AI 配置用于智能分析）
+        searchResults = await performSearch(prompt, searchConfig, aiConfig)
+      } catch (searchError) {
+        console.error('[AI Generate API] 搜索失败，降级到普通模式:', searchError)
+        // 搜索失败不影响主流程
+      }
+    }
+
     // 获取 AI 配置
     console.log('[API] Getting AI config...')
     let aiClient: AIClient
     try {
       const config = await getAIConfig(request as unknown as Request, userId, modelId)
-      console.log('[API] AI config:', {
-        hasApiKey: !!config.apiKey,
-        baseUrl: config.baseUrl,
-        model: config.model,
-      })
 
       aiClient = new OpenAIClient(
         config.apiKey,
@@ -141,8 +168,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 构建完整的提示词，包含上下文
-    const fullPrompt = `
+    // 构建完整的提示词，包含上下文和搜索结果
+    let fullPrompt = `
 你是一个专业的教育内容生成助手。
 
 学习计划标题: ${learningPlanTitle || "未指定"}
@@ -160,9 +187,13 @@ export async function POST(request: NextRequest) {
 
 请直接返回生成的内容，不需要额外的说明。
     `.trim()
+    
+    // 如果有搜索结果，添加到 prompt
+    if (searchResults) {
+      fullPrompt = `${searchResults}\n\n${fullPrompt}`
+    }
 
     // 调用 AI 生成内容
-    console.log('[API] Calling AI...')
     const generatedContent = await aiClient.chat({
       messages: [
         {
@@ -177,8 +208,6 @@ export async function POST(request: NextRequest) {
       temperature: 0.7,
       maxTokens: 100000,
     })
-
-    console.log('[API] AI response received, length:', generatedContent.length)
 
     // 将 Markdown 转换为 HTML
     const htmlContent = markdownToHtml(generatedContent)

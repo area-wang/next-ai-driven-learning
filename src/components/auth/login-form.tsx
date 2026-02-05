@@ -36,8 +36,6 @@ export function LoginForm({ className, callbackUrl = "/dashboard" }: LoginFormPr
         redirect: false,
       })
 
-      console.log("SignIn result:", result)
-
       if (result?.error) {
         setError("邮箱或密码错误")
       } else if (result?.ok) {

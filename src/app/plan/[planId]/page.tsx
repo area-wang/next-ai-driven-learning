@@ -622,6 +622,7 @@ export default function PlanDetailPage() {
             additionalContext: params.additionalContext,
             level: params.level,
             modelId: params.modelId, // 传递模型ID给后端
+            enableWebSearch: params.enableWebSearch, // 传递联网搜索开关
           }),
         })
 
@@ -659,6 +660,7 @@ export default function PlanDetailPage() {
             additionalContext: params.additionalContext, // 添加补充描述
             modelId: params.modelId, // 传递模型ID给后端
             depth: params.depth, // 传递层级深度
+            enableWebSearch: params.enableWebSearch, // 传递联网搜索开关
           }),
         })
 
@@ -864,6 +866,7 @@ export default function PlanDetailPage() {
           questionCount: params.questionCount,
           questionTypes: params.questionTypes,
           modelId: params.modelId, // 传递模型ID给后端
+          enableWebSearch: params.enableWebSearch, // 传递联网搜索开关
         }),
       })
 
@@ -1216,12 +1219,9 @@ export default function PlanDetailPage() {
                   })),
                 }),
               })
-            } else {
-              console.warn('获取内容ID失败，题目未保存到数据库（仅保存HTML）')
             }
           } catch (error) {
             console.error('保存题目到数据库失败:', error)
-            console.warn('题目未保存到数据库，但HTML已保存')
           }
 
           toast.success('测试题生成成功！')
@@ -1296,8 +1296,7 @@ export default function PlanDetailPage() {
           method: 'DELETE',
         })
       } catch (error) {
-        console.warn('清除旧的费曼解释失败:', error)
-        // 不影响后续流程
+        console.error('清除旧的费曼解释失败:', error)
       }
 
       toast.info('正在从当前文档内容中提取核心概念...')

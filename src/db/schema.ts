@@ -16,6 +16,10 @@ export const users = sqliteTable('users', {
   provider: text('provider'), // 'email' | 'google' | 'github'
   providerId: text('provider_id'),
   configMode: text('config_mode').default('openrouter'), // 'openrouter' | 'independent'
+  // 联网搜索配置
+  searchResultCount: integer('search_result_count').default(5), // 搜索结果数量
+  searchLanguage: text('search_language').default('auto'), // 搜索语言: 'auto' | 'zh' | 'en'
+  tavilyApiKey: text('tavily_api_key'), // Tavily API Key（加密存储）
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).$onUpdate(() => new Date()),
 })

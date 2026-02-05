@@ -8,6 +8,8 @@ import { generateTestQuestionsPrompt, type TestQuestionsInput } from '@/lib/ai/p
 import { type AIClient, OpenAIClient } from '@/lib/ai/client'
 import { getUserIdOrDemo } from '@/lib/auth/get-user'
 import { getAIConfig } from '@/lib/ai/get-ai-config'
+import { performSearch } from '@/lib/search/utils'
+import { getSearchConfig } from '@/lib/search/get-search-config'
 
 interface GenerateRequest {
   topic: string
@@ -19,6 +21,7 @@ interface GenerateRequest {
   questionCount: number
   questionTypes: string[]
   modelId?: string // 指定使用的模型ID
+  enableWebSearch?: boolean // 是否启用联网搜索
 }
 
 interface Question {
@@ -48,6 +51,7 @@ export async function POST(request: NextRequest) {
       questionCount,
       questionTypes,
       modelId,
+      enableWebSearch = false,
     } = body
 
     console.log('[API] Test questions generate request:', {
@@ -61,6 +65,7 @@ export async function POST(request: NextRequest) {
       questionTypes,
       modelId,
       userId,
+      enableWebSearch,
     })
 
     if (!topic) {
@@ -82,6 +87,42 @@ export async function POST(request: NextRequest) {
         { error: '必须选择至少一种题型' },
         { status: 400 }
       )
+    }
+
+    // 处理联网搜索
+    let searchResults = ''
+    if (enableWebSearch) {
+      try {
+        console.log('[Test Questions API] 联网搜索已启用')
+        
+        // 获取 AI 配置（用于搜索意图分析）
+        let aiConfig
+        try {
+          const config = await getAIConfig(request as unknown as Request, userId, modelId)
+          aiConfig = {
+            apiKey: config.apiKey,
+            baseUrl: config.baseUrl,
+            model: config.model,
+          }
+        } catch (error) {
+          console.warn('[Test Questions API] 无法获取 AI 配置用于搜索分析，将使用简单提取')
+        }
+        
+        // 获取用户的搜索配置
+        const searchConfig = await getSearchConfig(request as unknown as Request, userId)
+        console.log('[Test Questions API] 搜索配置:', searchConfig)
+        
+        // 构建搜索查询
+        const searchQuery = `${topic} 考试题 面试题 测试题 ${difficulty}`
+        console.log('[Test Questions API] 搜索查询:', searchQuery)
+        
+        // 执行搜索（传递 AI 配置用于智能分析）
+        searchResults = await performSearch(searchQuery, searchConfig, aiConfig)
+        console.log('[Test Questions API] 搜索完成，结果长度:', searchResults.length)
+      } catch (searchError) {
+        console.error('[Test Questions API] 搜索失败，降级到普通模式:', searchError)
+        // 搜索失败不影响主流程
+      }
     }
 
     // 获取 AI 配置
@@ -119,7 +160,13 @@ export async function POST(request: NextRequest) {
       questionCount,
       questionTypes,
     }
-    const prompt = generateTestQuestionsPrompt(input)
+    let prompt = generateTestQuestionsPrompt(input)
+    
+    // 如果有搜索结果，添加到 prompt
+    if (searchResults) {
+      prompt = `${searchResults}\n\n${prompt}`
+    }
+    
     console.log('[API] Generated prompt length:', prompt.length)
 
     // 调用 AI 生成测试题

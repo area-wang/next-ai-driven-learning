@@ -6,6 +6,8 @@ import { generateOutlinePrompt, type OutlineInput } from '@/lib/ai/prompts'
 import { type AIClient, OpenAIClient } from '@/lib/ai/client'
 import { getUserIdOrDemo } from '@/lib/auth/get-user'
 import { getAIConfig } from '@/lib/ai/get-ai-config'
+import { performSearch } from '@/lib/search/utils'
+import { getSearchConfig } from '@/lib/search/get-search-config'
 
 interface GenerateRequest {
   planId?: string // 添加 planId 参数
@@ -16,6 +18,7 @@ interface GenerateRequest {
   additionalContext?: string // 添加补充描述参数
   modelId?: string // 指定使用的模型ID
   depth?: number // 新增：大纲层级深度（1-3）
+  enableWebSearch?: boolean // 是否启用联网搜索
 }
 
 interface OutlineItem {
@@ -35,7 +38,7 @@ export async function POST(request: NextRequest) {
   try {
     const userId = await getUserIdOrDemo()
     const body = await request.json() as GenerateRequest
-    const { planId, parentId, topic, goal, level, additionalContext, modelId, depth } = body
+    const { planId, parentId, topic, goal, level, additionalContext, modelId, depth, enableWebSearch = false } = body
 
     console.log('[API] Learning outline generate request:', {
       planId,
@@ -47,6 +50,7 @@ export async function POST(request: NextRequest) {
       userId,
       modelId,
       depth,
+      enableWebSearch,
     })
 
     if (!topic) {
@@ -56,16 +60,40 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // 处理联网搜索
+    let searchResults = ''
+    if (enableWebSearch) {
+      try {
+        // 获取 AI 配置（用于搜索意图分析）
+        let aiConfig
+        try {
+          const config = await getAIConfig(request as unknown as Request, userId, modelId)
+          aiConfig = {
+            apiKey: config.apiKey,
+            baseUrl: config.baseUrl,
+            model: config.model,
+          }
+        } catch (error) {
+          // 无法获取 AI 配置，将使用简单提取
+        }
+        
+        // 获取用户的搜索配置
+        const searchConfig = await getSearchConfig(request as unknown as Request, userId)
+        
+        // 构建搜索查询
+        const searchQuery = `${topic} 知识大纲 学习内容 ${level} 知识点`
+        
+        // 执行搜索（传递 AI 配置用于智能分析）
+        searchResults = await performSearch(searchQuery, searchConfig, aiConfig)
+      } catch (searchError) {
+        // 搜索失败不影响主流程
+      }
+    }
+
     // 获取 AI 配置
-    console.log('[API] Getting AI config...')
     let aiClient: AIClient
     try {
       const config = await getAIConfig(request as unknown as Request, userId, modelId)
-      console.log('[API] AI config:', {
-        hasApiKey: !!config.apiKey,
-        baseUrl: config.baseUrl,
-        model: config.model,
-      })
 
       aiClient = new OpenAIClient(
         config.apiKey,
@@ -88,11 +116,14 @@ export async function POST(request: NextRequest) {
       additionalContext,
       depth, // 新增：传递层级深度
     }
-    const prompt = generateOutlinePrompt(input)
-    console.log('[API] Generated prompt length:', prompt.length)
+    let prompt = generateOutlinePrompt(input)
+    
+    // 如果有搜索结果，添加到 prompt
+    if (searchResults) {
+      prompt = `${searchResults}\n\n${prompt}`
+    }
 
     // 调用 AI 生成大纲
-    console.log('[API] Calling AI...')
     let response: string
     try {
       response = await aiClient.chat({
@@ -105,8 +136,6 @@ export async function POST(request: NextRequest) {
         temperature: 0.7,
         maxTokens: 100000,
       })
-      console.log('[API] AI response received, length:', response.length)
-      console.log('[API] AI response preview:', response.slice(0, 200))
     } catch (aiError) {
       console.error('[API] AI call failed:', aiError)
       return NextResponse.json(
@@ -118,11 +147,6 @@ export async function POST(request: NextRequest) {
     // 解析 AI 响应
     let outlineData: OutlineResponse
     try {
-      // 输出原始响应用于调试
-      console.log('[API] Raw AI response length:', response.length)
-      console.log('[API] Raw AI response (first 1000 chars):', response.slice(0, 1000))
-      console.log('[API] Raw AI response (last 500 chars):', response.slice(-500))
-      
       // 清理响应：移除 Markdown 代码块标记
       let cleanedResponse = response.trim()
       
@@ -132,73 +156,33 @@ export async function POST(request: NextRequest) {
       // 移除结尾的 ```
       cleanedResponse = cleanedResponse.replace(/\n?```\s*$/i, '')
       
-      console.log('[API] Cleaned response length:', cleanedResponse.length)
-      console.log('[API] Cleaned response (first 1000 chars):', cleanedResponse.slice(0, 1000))
-      console.log('[API] Cleaned response (last 500 chars):', cleanedResponse.slice(-500))
-      
       // 先尝试直接解析清理后的响应
       try {
         outlineData = JSON.parse(cleanedResponse)
-        console.log('[API] ✅ Parsed outline directly, items:', outlineData.outline?.length)
       } catch (parseError) {
-        console.error('[API] ❌ Direct parse failed:', parseError)
-        console.error('[API] Parse error details:', {
-          message: parseError instanceof Error ? parseError.message : 'Unknown error',
-          name: parseError instanceof Error ? parseError.name : 'Unknown',
-        })
-        
         // 如果直接解析失败，尝试提取JSON对象
         const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/)
         if (jsonMatch) {
-          console.log('[API] Found JSON match, length:', jsonMatch[0].length)
-          console.log('[API] JSON match (first 1000 chars):', jsonMatch[0].slice(0, 1000))
-          console.log('[API] JSON match (last 500 chars):', jsonMatch[0].slice(-500))
-          
           try {
             outlineData = JSON.parse(jsonMatch[0])
-            console.log('[API] ✅ Parsed outline from match, items:', outlineData.outline?.length)
           } catch (matchError) {
-            console.error('[API] ❌ Match parse failed:', matchError)
-            console.error('[API] Match parse error details:', {
-              message: matchError instanceof Error ? matchError.message : 'Unknown error',
-              name: matchError instanceof Error ? matchError.name : 'Unknown',
-            })
-            
-            // 尝试找到 JSON 中的问题位置
-            if (matchError instanceof SyntaxError && matchError.message.includes('position')) {
-              const posMatch = matchError.message.match(/position (\d+)/)
-              if (posMatch) {
-                const errorPos = parseInt(posMatch[1])
-                const contextStart = Math.max(0, errorPos - 100)
-                const contextEnd = Math.min(jsonMatch[0].length, errorPos + 100)
-                console.error('[API] Error context:', jsonMatch[0].slice(contextStart, contextEnd))
-                console.error('[API] Error position marker:', ' '.repeat(errorPos - contextStart) + '^')
-              }
-            }
-            
             throw new Error(`JSON解析失败: ${matchError instanceof Error ? matchError.message : '未知错误'}`)
           }
         } else {
-          console.error('[API] ❌ No JSON found in response')
           throw new Error('AI响应中未找到有效的JSON格式')
         }
       }
       
       // 验证响应格式
       if (!outlineData.outline || !Array.isArray(outlineData.outline)) {
-        console.error('[API] ❌ Invalid outline format:', outlineData)
         throw new Error('AI响应格式错误：缺少outline数组')
       }
       
       if (outlineData.outline.length === 0) {
-        console.error('[API] ❌ Empty outline array')
         throw new Error('AI响应格式错误：outline数组为空')
       }
-      
-      console.log('[API] ✅ Successfully parsed outline with', outlineData.outline.length, 'items')
     } catch (error) {
       console.error('[API] Failed to parse AI response:', error)
-      console.error('[API] Raw response:', response.slice(0, 1000))
       return NextResponse.json(
         { 
           error: 'AI 响应格式错误',
@@ -220,8 +204,6 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      console.log('[API] Saving to database...')
-      
       let targetPlanId = planId
       
       // 如果没有提供 planId，创建新的学习计划
@@ -231,7 +213,6 @@ export async function POST(request: NextRequest) {
         const existingUser = await db.select().from(users).where(eq(users.id, userId)).limit(1)
         
         if (existingUser.length === 0) {
-          console.log('[API] Creating demo user...')
           await db.insert(users).values({
             id: userId,
             email: 'demo@example.com',
@@ -252,9 +233,8 @@ export async function POST(request: NextRequest) {
           progress: 0,
         }).returning()
         targetPlanId = plan.id
-        console.log('[API] Created plan:', targetPlanId)
       } else {
-        console.log('[API] Using existing plan:', targetPlanId)
+        // 使用现有计划
       }
 
       // 递归保存大纲项和内容
@@ -323,7 +303,6 @@ export async function POST(request: NextRequest) {
       }
 
       const savedItems = await saveOutlineItems(outlineData.outline, parentId || null)
-      console.log('[API] Successfully saved all outline items')
 
       return NextResponse.json({
         outlines: savedItems,

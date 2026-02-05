@@ -42,6 +42,7 @@ export interface GenerateParams {
   currentDocId?: string
   modelId?: string // 添加模型ID参数
   depth?: number // 新增：大纲层级深度（1-3）
+  enableWebSearch?: boolean // 联网搜索开关
 }
 
 export function AIGenerateDialog({
@@ -60,6 +61,7 @@ export function AIGenerateDialog({
   const [depth, setDepth] = React.useState<number>(2) // 新增：默认2级
   const [isGenerating, setIsGenerating] = React.useState(false)
   const [selectedModelId, setSelectedModelId] = React.useState<string | undefined>(undefined)
+  const [enableWebSearch, setEnableWebSearch] = React.useState(false)
   const toast = useToast()
 
   // 当对话框打开时，自动填充信息
@@ -101,6 +103,7 @@ export function AIGenerateDialog({
         currentDocId: currentDoc?.id,
         modelId: selectedModelId, // 传递选中的模型ID
         depth, // 传递层级深度
+        enableWebSearch, // 传递联网搜索开关
       })
       
       // 重置表单
@@ -269,6 +272,20 @@ export function AIGenerateDialog({
               onChange={setSelectedModelId}
               label="AI 模型"
             />
+
+            {/* 联网搜索开关 */}
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700 dark:text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={enableWebSearch}
+                  onChange={(e) => setEnableWebSearch(e.target.checked)}
+                  className="w-4 h-4 text-teal-600 border-slate-300 rounded focus:ring-teal-500 cursor-pointer"
+                />
+                <span>🌐 使用联网搜索</span>
+              </label>
+              <span className="text-xs text-slate-500">搜索最新信息</span>
+            </div>
 
             {/* 提示信息 */}
             {currentDoc ? (

@@ -35,6 +35,7 @@ export interface GenerateTestParams {
   parentDocId?: string
   currentDocId?: string
   modelId?: string // 添加模型ID参数
+  enableWebSearch?: boolean // 联网搜索开关
 }
 
 // 预定义题型
@@ -69,6 +70,7 @@ export function TestQuestionDialog({
   const [customTypes, setCustomTypes] = React.useState<string[]>([])
   const [isGenerating, setIsGenerating] = React.useState(false)
   const [selectedModelId, setSelectedModelId] = React.useState<string | undefined>(undefined)
+  const [enableWebSearch, setEnableWebSearch] = React.useState(false)
 
   // 计算总题目数量（自定义模式）
   const totalCustomCount = React.useMemo(() => {
@@ -223,6 +225,7 @@ export function TestQuestionDialog({
         parentDocId,
         currentDocId: currentDoc?.id,
         modelId: selectedModelId, // 传递选中的模型ID
+        enableWebSearch, // 传递联网搜索开关
       })
 
       // 重置表单
@@ -320,6 +323,20 @@ export function TestQuestionDialog({
               onChange={setSelectedModelId}
               label="AI 模型"
             />
+
+            {/* 联网搜索开关 */}
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700 dark:text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={enableWebSearch}
+                  onChange={(e) => setEnableWebSearch(e.target.checked)}
+                  className="w-4 h-4 text-teal-600 border-slate-300 rounded focus:ring-teal-500 cursor-pointer"
+                />
+                <span>🌐 使用联网搜索</span>
+              </label>
+              <span className="text-xs text-slate-500">搜索最新信息</span>
+            </div>
 
             {/* 分配模式 */}
             <div>

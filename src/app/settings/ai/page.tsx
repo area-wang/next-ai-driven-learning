@@ -641,6 +641,80 @@ export default function AISettingsPage() {
     }
   }
 
+  // 搜索配置状态
+  const [searchConfig, setSearchConfig] = useState({
+    searchResultCount: 5,
+    searchLanguage: 'auto' as 'auto' | 'zh' | 'en',
+    tavilyApiKey: '', // 用户输入的新 API Key
+    tavilyApiKeyMasked: '', // 脱敏后的 API Key（用于显示）
+  })
+  const [loadingSearchConfig, setLoadingSearchConfig] = useState(false)
+  const [savingSearchConfig, setSavingSearchConfig] = useState(false)
+  const [showTavilyApiKey, setShowTavilyApiKey] = useState(false) // 是否显示完整的 API Key
+
+  // 加载搜索配置
+  useEffect(() => {
+    loadSearchConfig()
+  }, [])
+
+  const loadSearchConfig = async () => {
+    setLoadingSearchConfig(true)
+    try {
+      const response = await fetch('/api/ai/search-config')
+      const result = await response.json() as {
+        searchResultCount: number
+        searchLanguage: 'auto' | 'zh' | 'en'
+        tavilyApiKey?: string // 脱敏后的 API Key
+      }
+      setSearchConfig({
+        searchResultCount: result.searchResultCount,
+        searchLanguage: result.searchLanguage,
+        tavilyApiKey: '', // 不显示完整的 API Key
+        tavilyApiKeyMasked: result.tavilyApiKey || '', // 显示脱敏后的值
+      })
+    } catch (error) {
+      console.error('加载搜索配置失败:', error)
+    } finally {
+      setLoadingSearchConfig(false)
+    }
+  }
+
+  const saveSearchConfig = async () => {
+    setSavingSearchConfig(true)
+    try {
+      const response = await fetch('/api/ai/search-config', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          searchResultCount: searchConfig.searchResultCount,
+          searchLanguage: searchConfig.searchLanguage,
+          tavilyApiKey: searchConfig.tavilyApiKey || undefined, // 只在有新输入时发送
+        }),
+      })
+      const result = await response.json() as { success: boolean; error?: string; tavilyApiKey?: string }
+      if (result.success) {
+        toast.success('搜索配置已保存')
+        // 更新脱敏后的 API Key
+        if (result.tavilyApiKey) {
+          setSearchConfig({
+            ...searchConfig,
+            tavilyApiKey: '', // 清空输入
+            tavilyApiKeyMasked: result.tavilyApiKey, // 显示脱敏后的值
+          })
+        }
+      } else {
+        toast.error(result.error || '保存失败')
+      }
+    } catch (error) {
+      console.error('保存搜索配置失败:', error)
+      toast.error('保存失败')
+    } finally {
+      setSavingSearchConfig(false)
+    }
+  }
+
   return (
     <div className="max-w-6xl space-y-6">
       {/* 页面标题 */}
@@ -651,6 +725,123 @@ export default function AISettingsPage() {
         <p className="text-[var(--color-text-secondary)]">
           选择配置模式,然后配置 API 并选择想要使用的模型。
         </p>
+      </div>
+
+      {/* 搜索参数配置 */}
+      <div className="glass rounded-lg border border-[var(--color-border-light)] p-6 space-y-4">
+        <div>
+          <h3 className="font-medium text-[var(--color-text)] mb-1">
+            🌐 联网搜索配置
+          </h3>
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            配置联网搜索的参数，这些参数将应用到所有启用联网搜索的场景
+          </p>
+        </div>
+
+        {loadingSearchConfig ? (
+          <div className="flex items-center gap-2 text-[var(--color-text-secondary)]">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span className="text-sm">加载中...</span>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Tavily API Key */}
+            <div>
+              <label className="block text-sm font-medium text-[var(--color-text)] mb-2">
+                Tavily API Key
+              </label>
+              <div className="relative">
+                <input
+                  type={showTavilyApiKey ? 'text' : 'password'}
+                  value={searchConfig.tavilyApiKeyMasked || searchConfig.tavilyApiKey}
+                  onChange={(e) => {
+                    setSearchConfig({
+                      ...searchConfig,
+                      tavilyApiKey: e.target.value,
+                      tavilyApiKeyMasked: '', // 清除脱敏值，显示用户输入
+                    })
+                  }}
+                  placeholder={searchConfig.tavilyApiKeyMasked ? '已配置（点击修改）' : '输入 Tavily API Key'}
+                  className="w-full px-3 py-2 pr-20 border border-[var(--color-border-light)] rounded-md bg-white/80 backdrop-blur-md text-[var(--color-text)] focus:outline-none focus:border-[var(--color-primary)]"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowTavilyApiKey(!showTavilyApiKey)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs text-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 rounded transition-colors cursor-pointer"
+                >
+                  {showTavilyApiKey ? '隐藏' : '显示'}
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
+                在 <a href="https://tavily.com/" target="_blank" rel="noopener noreferrer" className="text-[var(--color-primary)] hover:underline cursor-pointer">Tavily</a> 获取 API Key，用于联网搜索功能
+              </p>
+            </div>
+
+            {/* 搜索结果数量 */}
+            <div>
+              <label className="block text-sm font-medium text-[var(--color-text)] mb-2">
+                搜索结果数量
+              </label>
+              <Select
+                options={[
+                  { value: '3', label: '3 条' },
+                  { value: '5', label: '5 条（推荐）' },
+                  { value: '10', label: '10 条' },
+                ]}
+                value={searchConfig.searchResultCount.toString()}
+                onChange={(value) => setSearchConfig({ ...searchConfig, searchResultCount: parseInt(value) })}
+                className="w-48"
+              />
+              <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
+                每次搜索返回的结果数量，更多结果会提供更全面的信息但也会增加成本
+              </p>
+            </div>
+
+            {/* 搜索语言 */}
+            <div>
+              <label className="block text-sm font-medium text-[var(--color-text)] mb-2">
+                搜索语言
+              </label>
+              <Select
+                options={[
+                  { value: 'auto', label: '自动检测（推荐）' },
+                  { value: 'zh', label: '中文' },
+                  { value: 'en', label: '英文' },
+                ]}
+                value={searchConfig.searchLanguage}
+                onChange={(value) => setSearchConfig({ ...searchConfig, searchLanguage: value as 'auto' | 'zh' | 'en' })}
+                className="w-48"
+              />
+              <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
+                搜索时使用的语言，自动检测会根据用户输入自动选择
+              </p>
+            </div>
+
+            {/* 保存按钮 */}
+            <div className="flex items-center gap-4 pt-2">
+              <button
+                onClick={saveSearchConfig}
+                disabled={savingSearchConfig}
+                className="flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)] text-white rounded-md hover:bg-[var(--color-primary-dark)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+              >
+                {savingSearchConfig ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    保存中...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    保存配置
+                  </>
+                )}
+              </button>
+              <p className="text-xs text-[var(--color-text-secondary)]">
+                💡 提示：联网搜索开关在具体使用场景中启用（对话、生成大纲等）
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 配置模式选择 */}
