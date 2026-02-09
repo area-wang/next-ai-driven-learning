@@ -275,6 +275,19 @@ export const slashCommandItems: SlashCommandItem[] = [
     },
   },
   {
+    title: "Mermaid 图表",
+    description: "插入流程图、时序图等",
+    icon: "Network",
+    command: ({ editor, range }) => {
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .setMermaid('graph LR\n  A[开始] --> B[结束]')
+        .run()
+    },
+  },
+  {
     title: "AI 生成",
     description: "使用 AI 生成内容",
     icon: "Sparkles",
@@ -285,6 +298,42 @@ export const slashCommandItems: SlashCommandItem[] = [
         detail: { editor, range },
       })
       document.dispatchEvent(event)
+    },
+  },
+  {
+    title: "导入 Markdown",
+    description: "导入外部 Markdown 文档",
+    icon: "FileText",
+    command: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).run()
+      
+      // 创建文件选择器
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.accept = '.md,.markdown,text/markdown'
+      input.onchange = async (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0]
+        if (!file) return
+
+        try {
+          // 读取文件内容
+          const text = await file.text()
+          
+          // 触发导入事件
+          const event = new CustomEvent("importMarkdown", {
+            detail: { markdown: text, fileName: file.name },
+          })
+          document.dispatchEvent(event)
+        } catch (error) {
+          console.error('Markdown 导入失败:', error)
+          // 触发 toast 通知
+          const event = new CustomEvent("showToast", {
+            detail: { type: 'error', message: 'Markdown 导入失败，请重试' },
+          })
+          document.dispatchEvent(event)
+        }
+      }
+      input.click()
     },
   },
 ]

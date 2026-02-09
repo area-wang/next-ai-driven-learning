@@ -19,6 +19,7 @@ import TextAlign from "@tiptap/extension-text-align"
 import { Table, TableRow, TableCell, TableHeader } from "@tiptap/extension-table"
 import { cn } from "@/lib/utils"
 import { MathExtension, BlockMathExtension } from "./math-extension"
+import { MermaidNode } from "./mermaid-extension"
 import { DragDropExtension } from "./drag-drop-extension"
 import { PasteExtension } from "./paste-extension"
 import { UploadProgress } from "./upload-progress"
@@ -252,7 +253,7 @@ export function TiptapEditor({
   }
 
   const handleAIGenerate = async (prompt: string) => {
-    if (!editor) return
+    if (!editorRef.current) return
 
     try {
       const response = await fetch("/api/ai/generate", {
@@ -276,11 +277,86 @@ export function TiptapEditor({
       const generatedContent = data.content as string
 
       // 将生成的内容插入到编辑器
-      editor.chain().focus().insertContent(generatedContent).run()
+      editorRef.current.chain().focus().insertContent(generatedContent).run()
     } catch (error) {
       throw error
     }
   }
+
+  // 监听 Markdown 粘贴事件
+  React.useEffect(() => {
+    const handlePasteMarkdown = (event: Event) => {
+      const customEvent = event as CustomEvent
+      const { html } = customEvent.detail
+      
+      if (editorRef.current && html) {
+        // 使用 insertContent 插入 HTML
+        editorRef.current.commands.insertContent(html)
+      }
+    }
+
+    document.addEventListener("pasteMarkdown", handlePasteMarkdown)
+    return () => {
+      document.removeEventListener("pasteMarkdown", handlePasteMarkdown)
+    }
+  }, [])
+
+  // 监听导入 Markdown 文件事件
+  React.useEffect(() => {
+    const handleImportMarkdown = async (event: Event) => {
+      const customEvent = event as CustomEvent
+      const { markdown, fileName } = customEvent.detail
+      
+      if (editorRef.current && markdown) {
+        try {
+          // 使用 markdown-it 将 Markdown 转换为 HTML
+          const MarkdownIt = (await import('markdown-it')).default
+          const md = new MarkdownIt({
+            html: true,
+            linkify: true,
+            typographer: true,
+            breaks: true,
+          })
+          
+          // 处理 Mermaid 代码块
+          const processedMarkdown = markdown.replace(
+            /```mermaid\n([\s\S]*?)```/g,
+            (_match: string, code: string) => {
+              return `<div data-type="mermaid" data-content="${encodeURIComponent(code.trim())}"></div>`
+            }
+          )
+          
+          const html = md.render(processedMarkdown)
+          
+          // 插入到编辑器
+          editorRef.current.commands.insertContent(html)
+          
+          // 显示成功提示
+          const toastEvent = new CustomEvent("showToast", {
+            detail: { 
+              type: 'success', 
+              message: `成功导入 ${fileName}` 
+            },
+          })
+          document.dispatchEvent(toastEvent)
+        } catch (error) {
+          console.error('Markdown 解析失败:', error)
+          const toastEvent = new CustomEvent("showToast", {
+            detail: { 
+              type: 'error', 
+              message: 'Markdown 解析失败' 
+            },
+          })
+          document.dispatchEvent(toastEvent)
+        }
+      }
+    }
+
+    document.addEventListener("importMarkdown", handleImportMarkdown)
+    return () => {
+      document.removeEventListener("importMarkdown", handleImportMarkdown)
+    }
+  }, [])
 
   const editor = useEditor({
     extensions: [
@@ -357,6 +433,7 @@ export function TiptapEditor({
       }),
       MathExtension,
       BlockMathExtension,
+      MermaidNode,
       TextStyle,
       Color,
       Highlight.configure({

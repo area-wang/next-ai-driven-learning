@@ -10,6 +10,9 @@ import {
   Heading1,
   Heading2,
   Heading3,
+  Heading4,
+  Heading5,
+  Heading6,
   List,
   ListOrdered,
   ListChecks,
@@ -18,9 +21,12 @@ import {
   Minus,
   Image as ImageIcon,
   Video,
+  Youtube,
   Table,
   Sigma,
   Sparkles,
+  FileText,
+  Network,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { SlashCommandItem } from "./slash-command"
@@ -38,6 +44,9 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   H1: Heading1,
   H2: Heading2,
   H3: Heading3,
+  Heading4,
+  Heading5,
+  Heading6,
   List,
   ListOrdered,
   ListChecks,
@@ -46,9 +55,12 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Minus,
   Image: ImageIcon,
   Video,
+  Youtube,
   Table,
   Sigma,
   Sparkles,
+  FileText,
+  Network,
 }
 
 export const CommandList = React.forwardRef<CommandListRef, CommandListProps>(

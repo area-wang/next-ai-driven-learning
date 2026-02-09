@@ -153,7 +153,7 @@ export default function TestEditorPage() {
       ...prev,
       [newDocId]: {
         title: "新文档",
-        content: "<p>开始编辑...</p>",
+        content: "",
       },
     }))
 

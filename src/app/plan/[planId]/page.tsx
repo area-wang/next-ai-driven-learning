@@ -201,6 +201,13 @@ export default function PlanDetailPage() {
   // 获取当前文档的标题和内容
   const currentDoc = documentContents[activeDocId] || { title: "", content: "" }
 
+  // 设置保存端点到全局变量，供 beforeunload 事件使用
+  React.useEffect(() => {
+    if (activeDocId) {
+      (window as any).__saveEndpoint = `/api/learning-outline/${activeDocId}`
+    }
+  }, [activeDocId])
+
   // 检测是否为测试题文档
   const isTestDocument = React.useMemo(() => {
     return currentDoc.title.includes('测试题') || currentDoc.content.includes('第 1 题')
@@ -208,7 +215,7 @@ export default function PlanDetailPage() {
 
   // 自动保存当前文档
   useAutoSave(currentDoc.title, currentDoc.content, {
-    delay: 2000, // 2秒防抖
+    delay: 1000, // 1秒防抖
     onSave: async ({ title, content }) => {
       if (!activeDocId) return
       
@@ -239,6 +246,7 @@ export default function PlanDetailPage() {
 
   // 更新文档标题
   const handleTitleChange = React.useCallback((title: string) => {
+    // 更新文档内容中的标题
     setDocumentContents((prev) => ({
       ...prev,
       [activeDocId]: {
@@ -246,6 +254,26 @@ export default function PlanDetailPage() {
         title,
       },
     }))
+    
+    // 同步更新文档树中的标题
+    const updateDocTitle = (nodes: DocumentNode[]): DocumentNode[] => {
+      return nodes.map((node) => {
+        if (node.id === activeDocId) {
+          return {
+            ...node,
+            title,
+          }
+        }
+        if (node.children) {
+          return {
+            ...node,
+            children: updateDocTitle(node.children),
+          }
+        }
+        return node
+      })
+    }
+    setDocuments((prev) => updateDocTitle(prev))
   }, [activeDocId])
 
   // 更新文档内容
@@ -453,49 +481,101 @@ export default function PlanDetailPage() {
     localStorage.setItem(storageKey, docId)
   }, [planId])
 
-  const handleDocumentAdd = React.useCallback((parentId?: string) => {
-    const newDocId = `doc-${Date.now()}`
-    const newDoc: DocumentNode = {
-      id: newDocId,
-      title: "新文档",
-    }
-
-    // 添加新文档的内容
-    setDocumentContents((prev) => ({
-      ...prev,
-      [newDocId]: {
-        title: "新文档",
-        content: "<p>开始编辑...</p>",
-      },
-    }))
-
-    if (!parentId) {
-      // 添加到根级别
-      setDocuments((prev) => [...prev, newDoc])
-    } else {
-      // 添加到指定父文档下
-      const addToParent = (nodes: DocumentNode[]): DocumentNode[] => {
-        return nodes.map((node) => {
-          if (node.id === parentId) {
-            return {
-              ...node,
-              children: [...(node.children || []), newDoc],
+  const handleDocumentAdd = React.useCallback(async (parentId?: string) => {
+    try {
+      // 计算新文档的 order 值
+      let maxOrder = 0
+      if (!parentId) {
+        // 根级别：找到所有根级文档的最大 order
+        maxOrder = documents.reduce((max, doc) => {
+          // 这里需要从后端获取 order，但前端没有存储
+          // 简单方案：使用文档数量作为 order
+          return max
+        }, documents.length)
+      } else {
+        // 子级别：找到父文档下所有子文档的最大 order
+        const findParent = (nodes: DocumentNode[]): DocumentNode | null => {
+          for (const node of nodes) {
+            if (node.id === parentId) return node
+            if (node.children) {
+              const found = findParent(node.children)
+              if (found) return found
             }
           }
-          if (node.children) {
-            return {
-              ...node,
-              children: addToParent(node.children),
-            }
-          }
-          return node
-        })
+          return null
+        }
+        const parent = findParent(documents)
+        maxOrder = parent?.children?.length || 0
       }
-      setDocuments((prev) => addToParent(prev))
-    }
 
-    setAndSaveActiveDocId(newDocId)
-  }, [])
+      // 先在数据库中创建大纲记录
+      const response = await fetch('/api/learning-outline/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          planId,
+          parentId: parentId || null,
+          title: "新文档",
+          description: '',
+          level: 0,
+          order: maxOrder, // 使用计算出的 order
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('创建文档失败')
+      }
+
+      const data = await response.json() as { outline: { id: string } }
+      const newDocId = data.outline.id
+
+      const newDoc: DocumentNode = {
+        id: newDocId,
+        title: "新文档",
+      }
+
+      // 添加新文档的内容
+      setDocumentContents((prev) => ({
+        ...prev,
+        [newDocId]: {
+          title: "新文档",
+          content: "",
+        },
+      }))
+
+      if (!parentId) {
+        // 添加到根级别
+        setDocuments((prev) => [...prev, newDoc])
+      } else {
+        // 添加到指定父文档下
+        const addToParent = (nodes: DocumentNode[]): DocumentNode[] => {
+          return nodes.map((node) => {
+            if (node.id === parentId) {
+              return {
+                ...node,
+                children: [...(node.children || []), newDoc],
+              }
+            }
+            if (node.children) {
+              return {
+                ...node,
+                children: addToParent(node.children),
+              }
+            }
+            return node
+          })
+        }
+        setDocuments((prev) => addToParent(prev))
+      }
+
+      setAndSaveActiveDocId(newDocId)
+    } catch (error) {
+      console.error('添加文档失败:', error)
+      toast.error('添加文档失败')
+    }
+  }, [planId, toast, documents])
 
   const handleDocumentDelete = React.useCallback((docId: string) => {
     // 查找要删除的文档节点

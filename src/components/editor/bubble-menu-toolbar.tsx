@@ -387,18 +387,29 @@ export function BubbleMenuToolbar({ editor }: BubbleMenuToolbarProps) {
         return
       }
 
-      // 检查选中的内容是否在 details/summary 元素内
+      // 检查选中的内容是否在 details/summary/mermaid 元素内
       try {
         const $from = state.selection.$from
         const $to = state.selection.$to
         
-        // 检查选区的父节点是否是 details 或 summary
+        // 检查选区是否直接在 mermaid 节点上（atom 节点）
+        // 使用 NodeSelection 检查
+        if (state.selection instanceof editor.state.schema.nodes.doc.constructor) {
+          const node = (state.selection as any).node
+          if (node && node.type.name === 'mermaid') {
+            setIsVisible(false)
+            setActiveCategory(null)
+            return
+          }
+        }
+        
+        // 检查选区的父节点是否是 details、summary 或 mermaid
         let node = $from.parent
         let depth = $from.depth
         
         while (depth > 0) {
-          if (node.type.name === 'details' || node.type.name === 'summary') {
-            // 如果选中的内容在 details/summary 内，不显示工具栏
+          if (node.type.name === 'details' || node.type.name === 'summary' || node.type.name === 'mermaid') {
+            // 如果选中的内容在 details/summary/mermaid 内，不显示工具栏
             setIsVisible(false)
             setActiveCategory(null)
             return
@@ -412,7 +423,7 @@ export function BubbleMenuToolbar({ editor }: BubbleMenuToolbarProps) {
         depth = $to.depth
         
         while (depth > 0) {
-          if (node.type.name === 'details' || node.type.name === 'summary') {
+          if (node.type.name === 'details' || node.type.name === 'summary' || node.type.name === 'mermaid') {
             setIsVisible(false)
             setActiveCategory(null)
             return
@@ -434,6 +445,14 @@ export function BubbleMenuToolbar({ editor }: BubbleMenuToolbarProps) {
             // 检查是否在按钮内或按钮本身
             const button = element.closest('button[data-similar-question-btn="true"]')
             if (button) {
+              setIsVisible(false)
+              setActiveCategory(null)
+              return
+            }
+            
+            // 检查是否在 mermaid-wrapper 内
+            const mermaidWrapper = element.closest('.mermaid-wrapper')
+            if (mermaidWrapper) {
               setIsVisible(false)
               setActiveCategory(null)
               return

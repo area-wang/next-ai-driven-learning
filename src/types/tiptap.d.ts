@@ -20,5 +20,11 @@ declare module '@tiptap/core' {
        */
       setVimeoVideo: (options: { src: string }) => ReturnType
     }
+    mermaid: {
+      /**
+       * 插入 Mermaid 图表
+       */
+      setMermaid: (content: string) => ReturnType
+    }
   }
 }
