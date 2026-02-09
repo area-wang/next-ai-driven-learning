@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDbClient } from '@/lib/db-connection'
-import { cornellNotes } from '@/db/schema'
+import { cornellNotes, knowledgeContents } from '@/db/schema'
 import { eq, and, desc } from 'drizzle-orm'
 import { getUserIdOrDemo } from '@/lib/auth/get-user'
 
@@ -18,11 +18,27 @@ export async function GET(request: NextRequest) {
 
     const userId = await getUserIdOrDemo()
     const { searchParams } = new URL(request.url)
-    const contentId = searchParams.get('contentId')
+    const outlineId = searchParams.get('contentId') // 实际上是 outlineId
 
     const conditions = [eq(cornellNotes.userId, userId)]
-    if (contentId) {
-      conditions.push(eq(cornellNotes.contentId, contentId))
+    
+    if (outlineId) {
+      // 根据 outlineId 查找对应的 knowledge_contents
+      const content = await db
+        .select()
+        .from(knowledgeContents)
+        .where(eq(knowledgeContents.outlineId, outlineId))
+        .limit(1)
+      
+      if (content.length > 0) {
+        conditions.push(eq(cornellNotes.contentId, content[0].id))
+      } else {
+        // 如果没找到，返回空数组
+        return NextResponse.json({
+          success: true,
+          data: [],
+        })
+      }
     }
 
     const results = await db
@@ -50,21 +66,36 @@ export async function POST(request: NextRequest) {
 
     const userId = await getUserIdOrDemo()
     const body = await request.json() as {
-      contentId: string
+      contentId: string // 实际上是 outlineId
       mainNotes: string
       cues?: string
       summary?: string
     }
 
-    const { contentId, mainNotes, cues, summary } = body
+    const { contentId: outlineId, mainNotes, cues, summary } = body
 
-    if (!contentId || !mainNotes) {
+    if (!outlineId || !mainNotes) {
       return NextResponse.json({ error: '缺少必要参数' }, { status: 400 })
     }
 
+    // 根据 outlineId 查找对应的 knowledge_contents
+    const content = await db
+      .select()
+      .from(knowledgeContents)
+      .where(eq(knowledgeContents.outlineId, outlineId))
+      .limit(1)
+    
+    if (content.length === 0) {
+      return NextResponse.json({ 
+        error: '未找到对应的学习内容'
+      }, { status: 400 })
+    }
+
+    const actualContentId = content[0].id
+
     const result = await db.insert(cornellNotes).values({
       userId,
-      contentId,
+      contentId: actualContentId,
       mainNotes,
       cues: cues || null,
       summary: summary || null,
@@ -77,7 +108,9 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error('创建康奈尔笔记失败:', error)
-    return NextResponse.json({ error: '创建康奈尔笔记失败' }, { status: 500 })
+    return NextResponse.json({ 
+      error: '创建康奈尔笔记失败'
+    }, { status: 500 })
   }
 }
 
@@ -103,7 +136,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const updateData: any = {
-      updatedAt: Date.now(),
+      updatedAt: new Date(),
     }
     if (mainNotes !== undefined) updateData.mainNotes = mainNotes
     if (cues !== undefined) updateData.cues = cues
@@ -126,7 +159,9 @@ export async function PUT(request: NextRequest) {
     })
   } catch (error) {
     console.error('更新康奈尔笔记失败:', error)
-    return NextResponse.json({ error: '更新康奈尔笔记失败' }, { status: 500 })
+    return NextResponse.json({ 
+      error: '更新康奈尔笔记失败'
+    }, { status: 500 })
   }
 }
 

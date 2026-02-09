@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Spinner } from '@/components/ui/spinner'
 import { useToast } from '@/components/ui/toast-container'
-import { FileText, Sparkles, Save, Eye } from 'lucide-react'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { FileText, Sparkles, Save, Eye, HelpCircle } from 'lucide-react'
 
 interface CornellNote {
   id: string
@@ -125,8 +126,8 @@ export function CornellNoteDialog({
 
   // AI 评估笔记质量
   const handleEvaluate = async () => {
-    if (!mainNotes.trim() || !cues.trim() || !summary.trim()) {
-      toast.warning('请先完成所有区域的填写')
+    if (!mainNotes.trim()) {
+      toast.warning('请先填写主笔记区内容')
       return
     }
 
@@ -143,8 +144,8 @@ export function CornellNoteDialog({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mainNotes,
-          cues,
-          summary,
+          cues: cues.trim() || null,
+          summary: summary.trim() || null,
           modelId: selectedModelId,
         }),
       })
@@ -222,9 +223,26 @@ export function CornellNoteDialog({
               <FileText className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-gray-900">
-                康奈尔笔记法
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl font-semibold text-gray-900">
+                  康奈尔笔记法
+                </h2>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <HelpCircle className="w-4 h-4 text-gray-400 hover:text-gray-600 cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="w-80">
+                    <div className="text-xs space-y-1.5">
+                      <p className="font-semibold mb-2">康奈尔笔记法使用流程：</p>
+                      <p>• <strong>学习时</strong>：在主笔记区记录详细内容</p>
+                      <p>• <strong>学习后</strong>：在线索区写下关键词和问题</p>
+                      <p>• <strong>整理后</strong>：在总结区概括核心内容</p>
+                      <p>• <strong>复习时</strong>：用线索区自测回忆</p>
+                      <p className="mt-2 opacity-80">💡 可使用 AI 辅助生成，但建议自己思考后再参考</p>
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <p className="text-xs text-gray-500 mt-0.5">
                 三栏笔记：线索区 + 主笔记区 + 总结区
               </p>
@@ -253,7 +271,7 @@ export function CornellNoteDialog({
             </Button>
             <Button
               onClick={handleEvaluate}
-              disabled={isEvaluating || !mainNotes.trim() || !cues.trim() || !summary.trim()}
+              disabled={isEvaluating || !mainNotes.trim()}
               variant="outline"
               size="sm"
             >
@@ -297,19 +315,6 @@ export function CornellNoteDialog({
             </div>
           ) : (
             <div className="space-y-3">
-              {/* 使用提示 */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-3">
-                <h4 className="text-xs font-semibold mb-1.5 text-blue-800">
-                  💡 使用提示
-                </h4>
-                <ul className="text-xs text-blue-700 space-y-0.5">
-                  <li>• 先在主笔记区记录详细内容</li>
-                  <li>• 点击"AI 生成"按钮自动生成线索和总结</li>
-                  <li>• 也可以手动编辑线索区和总结区</li>
-                  <li>• 完成后点击"AI 评估"获取笔记质量反馈</li>
-                </ul>
-              </div>
-
               {/* 三栏布局 */}
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
                 {/* 线索区 */}
