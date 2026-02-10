@@ -15,6 +15,17 @@ mermaid.initialize({
   theme: 'default',
   securityLevel: 'loose',
   fontFamily: 'inherit',
+  flowchart: {
+    useMaxWidth: true,
+    htmlLabels: true,
+    curve: 'basis',
+  },
+  sequence: {
+    useMaxWidth: true,
+  },
+  gantt: {
+    useMaxWidth: true,
+  },
 })
 
 const MermaidNodeView: React.FC<NodeViewProps> = ({ node, updateAttributes, deleteNode, selected }) => {
@@ -34,9 +45,43 @@ const MermaidNodeView: React.FC<NodeViewProps> = ({ node, updateAttributes, dele
       }
 
       try {
-        const id = `mermaid-${Math.random().toString(36).substr(2, 9)}`
+        const id = `mermaid-${Math.random().toString(36).substring(2, 9)}`
         const { svg: renderedSvg } = await mermaid.render(id, node.attrs.content)
-        setSvg(renderedSvg)
+        
+        // 解析并修复 SVG（Mermaid 9.1.7+ 移除了 height 属性）
+        const parser = new DOMParser()
+        const doc = parser.parseFromString(renderedSvg, 'image/svg+xml')
+        const svgElement = doc.querySelector('svg')
+        
+        if (svgElement) {
+          const viewBox = svgElement.getAttribute('viewBox')
+          const height = svgElement.getAttribute('height')
+          
+          // 如果没有 height 属性，从 viewBox 中提取并调整
+          if (viewBox && !height) {
+            const [x, y, w, h] = viewBox.split(' ').map(Number)
+            
+            // x 和 y 都平移到原点
+            // viewBox 的 w 和 h 需要根据负坐标调整
+            const newX = 0
+            const newY = 0
+            const newWidth = x < 0 ? Math.abs(x) + w : w
+            const newHeight = y < 0 ? Math.abs(y) + h : h
+            
+            // 更新 viewBox：x 和 y 都平移到 0，w 和 h 调整
+            svgElement.setAttribute('viewBox', `${newX} ${newY} ${newWidth} ${newHeight}`)
+            
+            svgElement.removeAttribute('style')
+          }
+          
+          // 使用修复后的 SVG
+          const fixedSvg = new XMLSerializer().serializeToString(svgElement)
+          setSvg(fixedSvg)
+        } else {
+          // 如果解析失败，使用原始 SVG
+          setSvg(renderedSvg)
+        }
+        
         setError('')
       } catch (err) {
         console.error('Mermaid 渲染失败:', err)
@@ -187,7 +232,7 @@ const MermaidNodeView: React.FC<NodeViewProps> = ({ node, updateAttributes, dele
             ) : svg ? (
               <div className="p-4">
                 <div
-                  className="mermaid-diagram overflow-x-auto overflow-y-auto max-h-[600px] flex justify-center items-center bg-white rounded-lg p-4 border border-gray-200"
+                  className="mermaid-diagram bg-white rounded-lg border border-gray-200 p-4 flex items-center justify-center"
                   dangerouslySetInnerHTML={{ __html: svg }}
                 />
                 

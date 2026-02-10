@@ -880,3 +880,16 @@ select:focus-visible {
 .ai-message-markdown pre::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.5);
 }
+
+/* Mermaid 图表样式 - 确保完整显示 */
+.mermaid-diagram {
+  overflow: visible; /* 允许内容溢出显示 */
+  width: 100%;
+}
+
+.mermaid-diagram svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto; /* 水平居中 */
+}
