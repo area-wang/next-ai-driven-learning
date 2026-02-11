@@ -60,6 +60,102 @@ export function OutlineSidebar({ editor, className }: OutlineSidebarProps) {
     }
   }, [editor])
 
+  // 监听滚动，自动高亮当前可见的标题
+  React.useEffect(() => {
+    if (!editor || headings.length === 0) return
+
+    // 找到编辑器的滚动容器
+    const editorDom = editor.view.dom
+    let scrollContainer: HTMLElement | null = editorDom.parentElement
+    
+    // 向上查找带有 overflow 的容器
+    let depth = 0
+    while (scrollContainer && depth < 10) {
+      const style = window.getComputedStyle(scrollContainer)
+      if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+        break
+      }
+      scrollContainer = scrollContainer.parentElement
+      depth++
+    }
+
+    if (!scrollContainer) return
+
+    // 直接从 DOM 中查找所有标题元素
+    const allHeadingElements = Array.from(editorDom.querySelectorAll('h1, h2, h3, h4, h5, h6')) as HTMLElement[]
+
+    // 创建标题元素映射
+    const headingElementMap = new Map<string, HTMLElement>()
+    headings.forEach((heading, index) => {
+      let headingElement = allHeadingElements[index]
+      
+      if (headingElement && headingElement.textContent?.trim() !== heading.text.trim()) {
+        headingElement = allHeadingElements.find(
+          el => el.textContent?.trim() === heading.text.trim()
+        ) || headingElement
+      }
+      
+      if (headingElement) {
+        headingElementMap.set(heading.id, headingElement)
+      }
+    })
+
+    // 滚动事件处理函数
+    const handleScroll = () => {
+      const containerRect = scrollContainer!.getBoundingClientRect()
+      const referenceLine = containerRect.top + 100
+
+      const headingsAboveLine: Array<{ heading: HeadingItem; distance: number }> = []
+
+      headings.forEach((heading) => {
+        const element = headingElementMap.get(heading.id)
+        if (element) {
+          const rect = element.getBoundingClientRect()
+          if (rect.top <= referenceLine) {
+            headingsAboveLine.push({
+              heading,
+              distance: referenceLine - rect.top,
+            })
+          }
+        }
+      })
+
+      if (headingsAboveLine.length > 0) {
+        headingsAboveLine.sort((a, b) => a.distance - b.distance)
+        const newActiveId = headingsAboveLine[0].heading.id
+        if (newActiveId !== activeId) {
+          setActiveId(newActiveId)
+        }
+      } else if (headings.length > 0 && activeId !== headings[0].id) {
+        setActiveId(headings[0].id)
+      }
+    }
+
+    handleScroll()
+    scrollContainer.addEventListener('scroll', handleScroll, { passive: true })
+
+    return () => {
+      scrollContainer?.removeEventListener('scroll', handleScroll)
+    }
+  }, [editor, headings, activeId])
+
+  // 当 activeId 变化时，自动滚动大纲使高亮项可见
+  React.useEffect(() => {
+    if (!activeId) return
+
+    const timer = setTimeout(() => {
+      const activeElement = document.querySelector(`[data-outline-id="${activeId}"]`)
+      if (activeElement) {
+        activeElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+        })
+      }
+    }, 100)
+
+    return () => clearTimeout(timer)
+  }, [activeId])
+
   // 滚动到指定标题
   const scrollToHeading = React.useCallback(
     (item: HeadingItem) => {
@@ -115,6 +211,7 @@ export function OutlineSidebar({ editor, className }: OutlineSidebarProps) {
           <button
             key={item.id}
             type="button"
+            data-outline-id={item.id}
             onClick={() => scrollToHeading(item)}
             className={cn(
               "w-full text-left px-3 py-2 rounded-lg transition-all duration-200 cursor-pointer group",
