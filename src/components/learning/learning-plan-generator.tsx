@@ -32,7 +32,7 @@ interface LearningPlanGeneratorProps {
 export function LearningPlanGenerator({ userId, onPlanGenerated }: LearningPlanGeneratorProps) {
   const [topic, setTopic] = useState('')
   const [goal, setGoal] = useState('')
-  const [level, setLevel] = useState<'beginner' | 'intermediate' | 'advanced'>('beginner')
+  const [additionalContext, setAdditionalContext] = useState('')
   const [duration, setDuration] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [generatedPlan, setGeneratedPlan] = useState<LearningPlan | null>(null)
@@ -59,7 +59,7 @@ export function LearningPlanGenerator({ userId, onPlanGenerated }: LearningPlanG
         body: JSON.stringify({
           topic: topic.trim(),
           goal: goal.trim() || undefined,
-          level,
+          additionalContext: additionalContext.trim() || undefined,
           duration: duration.trim() || undefined,
           modelId: selectedModelId, // 传递 modelId 给后端
           userId,
@@ -129,34 +129,33 @@ export function LearningPlanGenerator({ userId, onPlanGenerated }: LearningPlanG
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                难度级别
-              </label>
-              <select
-                value={level}
-                onChange={e => setLevel(e.target.value as any)}
-                className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 cursor-pointer"
-              >
-                <option value="beginner">初级</option>
-                <option value="intermediate">中级</option>
-                <option value="advanced">高级</option>
-              </select>
-            </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+              补充描述（可选）
+            </label>
+            <textarea
+              value={additionalContext}
+              onChange={e => setAdditionalContext(e.target.value)}
+              placeholder="例如：适合初学者、需要循序渐进、注重实战项目、预计3个月完成"
+              rows={3}
+              className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+            />
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              💡 提示：可以在这里描述难度级别、学习时长、学习风格等
+            </p>
+          </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                预计时长（可选）
-              </label>
-              <input
-                type="text"
-                value={duration}
-                onChange={e => setDuration(e.target.value)}
-                placeholder="例如：3个月、6周"
-                className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
-              />
-            </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+              预计时长（可选）
+            </label>
+            <input
+              type="text"
+              value={duration}
+              onChange={e => setDuration(e.target.value)}
+              placeholder="例如：3个月、6周"
+              className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+            />
           </div>
 
           {error && (

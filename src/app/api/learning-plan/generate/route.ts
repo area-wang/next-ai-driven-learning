@@ -16,7 +16,8 @@ import { getSearchConfig } from '@/lib/search/get-search-config'
 interface GenerateRequest {
   topic: string
   goal?: string
-  level: 'beginner' | 'intermediate' | 'advanced'
+  level?: 'beginner' | 'intermediate' | 'advanced' // 改为可选
+  additionalContext?: string // 添加补充描述
   duration?: string
   userId?: string
   modelId?: string
@@ -38,7 +39,7 @@ interface LearningPlanResponse {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as GenerateRequest
-    const { topic, goal, level, duration, userId, modelId, enableWebSearch = false } = body
+    const { topic, goal, level, additionalContext, duration, userId, modelId, enableWebSearch = false } = body
 
     if (!topic) {
       return NextResponse.json(
@@ -77,7 +78,7 @@ export async function POST(request: NextRequest) {
         console.log('[Learning Plan API] 搜索配置:', searchConfig)
         
         // 构建搜索查询
-        const searchQuery = `${topic} 学习路径 学习计划 ${level} 教程`
+        const searchQuery = `${topic} 学习路径 学习计划 教程 ${additionalContext || ''}`
         console.log('[Learning Plan API] 搜索查询:', searchQuery)
         
         // 执行搜索（传递 AI 配置用于智能分析）
@@ -98,6 +99,7 @@ export async function POST(request: NextRequest) {
       topic,
       goal,
       level,
+      additionalContext,
       duration,
     }
     let prompt = generateLearningPlanPrompt(input)

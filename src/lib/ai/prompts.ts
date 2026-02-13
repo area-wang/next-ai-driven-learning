@@ -6,14 +6,15 @@
 export interface LearningPlanInput {
   topic: string
   goal?: string
-  level: 'beginner' | 'intermediate' | 'advanced'
+  level?: 'beginner' | 'intermediate' | 'advanced' // 改为可选
+  additionalContext?: string // 添加补充描述
   duration?: string
 }
 
 export interface OutlineInput {
   topic: string
   goal?: string
-  level: 'beginner' | 'intermediate' | 'advanced'
+  level?: 'beginner' | 'intermediate' | 'advanced' // 改为可选
   additionalContext?: string // 添加补充描述
   depth?: number // 新增：大纲层级深度（1-3）
 }
@@ -21,7 +22,7 @@ export interface OutlineInput {
 export interface ContentInput {
   topic: string
   outlineItem: string
-  level: 'beginner' | 'intermediate' | 'advanced'
+  level?: 'beginner' | 'intermediate' | 'advanced' // 改为可选
 }
 
 export interface QuestionInput {
@@ -37,7 +38,7 @@ export interface TestQuestionsInput {
   planGoal?: string // 学习计划目标
   currentContent?: string // 当前章节内容
   additionalContext?: string // 用户自定义描述
-  difficulty: 'easy' | 'medium' | 'hard'
+  difficulty?: 'easy' | 'medium' | 'hard' // 改为可选
   questionCount: number
   questionTypes: string[]
 }
@@ -46,13 +47,19 @@ export interface TestQuestionsInput {
  * 生成学习计划的提示词
  */
 export function generateLearningPlanPrompt(input: LearningPlanInput): string {
-  const { topic, goal, level, duration } = input
+  const { topic, goal, level, additionalContext, duration } = input
+
+  // 构建难度级别说明（如果提供了）
+  const levelText = level 
+    ? `难度级别：${level === 'beginner' ? '初级' : level === 'intermediate' ? '中级' : '高级'}`
+    : ''
 
   return `你是一位专业的学习规划师。请为以下主题创建一个详细的学习计划：
 
 主题：${topic}
 ${goal ? `学习目标：${goal}` : ''}
-难度级别：${level === 'beginner' ? '初级' : level === 'intermediate' ? '中级' : '高级'}
+${levelText}
+${additionalContext ? `补充要求：${additionalContext}` : ''}
 ${duration ? `预计时长：${duration}` : ''}
 
 请生成一个结构化的学习计划，包括：
@@ -106,11 +113,16 @@ export function generateOutlinePrompt(input: OutlineInput): string {
 - 最多 3 层嵌套`
   }
 
+  // 构建难度级别说明（如果提供了）
+  const levelText = level 
+    ? `难度级别：${level === 'beginner' ? '初级' : level === 'intermediate' ? '中级' : '高级'}`
+    : ''
+
   return `你是一位专业的课程设计师。请为以下主题创建一个详细的学习大纲：
 
 主题：${topic}
 ${goal ? `学习目标：${goal}` : ''}
-难度级别：${level === 'beginner' ? '初级' : level === 'intermediate' ? '中级' : '高级'}
+${levelText}
 ${additionalContext ? `补充要求：${additionalContext}` : ''}
 ${depthInstruction}
 
@@ -202,18 +214,80 @@ ${depthInstruction}
 export function generateContentPrompt(input: ContentInput): string {
   const { topic, outlineItem, level } = input
 
+  // 构建难度级别说明（如果提供了）
+  const levelText = level 
+    ? `难度级别：${level === 'beginner' ? '初级' : level === 'intermediate' ? '中级' : '高级'}`
+    : ''
+
   return `你是一位专业的教育内容创作者。请为以下主题创建详细的学习内容：
 
 主题：${topic}
 章节：${outlineItem}
-难度级别：${level === 'beginner' ? '初级' : level === 'intermediate' ? '中级' : '高级'}
+${levelText}
 
+**【重要】返回格式要求：**
+必须返回 JSON 格式，包含两个字段：
+1. content: 完整的学习内容（Markdown 格式）
+2. summary: 结构化的文档摘要（JSON 对象）
+
+JSON 格式如下：
+\`\`\`json
+{
+  "content": "完整的 Markdown 格式学习内容",
+  "summary": {
+    "topic": "文档主题",
+    "userQuery": "用户的原始问题或需求",
+    "outline": [
+      {
+        "title": "章节标题",
+        "level": 2,
+        "summary": "该章节的核心内容总结（50-100字）",
+        "format": {
+          "titleLevel": "##",
+          "hasCodeBlocks": true,
+          "codeLanguages": ["python"],
+          "hasLists": true,
+          "listStyle": "使用 - 开头，标题加粗",
+          "hasTables": false,
+          "hasImages": false,
+          "hasFormulas": false
+        }
+      },
+      ......
+    ]
+  }
+}
+\`\`\`
+
+**【学习内容要求】**
 请生成富文本格式的学习内容，包括：
 1. 概念解释（清晰易懂）
 2. 实例演示（具体案例）
 3. 关键要点总结
 4. 常见误区提醒
 5. 实践建议
+
+**【摘要要求】**
+摘要必须是结构化的 JSON 对象，包含以下字段：
+
+1. **topic**（字符串）：文档的主题
+2. **userQuery**（字符串）：用户的原始问题或需求
+3. **outline**（数组）：文档大纲，每个章节包含：
+   - title: 章节标题
+   - level: 标题层级（2 表示 ##，3 表示 ###）
+   - summary: 该章节的核心内容总结（50-100字）
+   - format: 该章节使用的格式（对象）
+     * titleLevel: 该章节的标题层级（如 "##"）
+     * hasCodeBlocks: 该章节是否包含代码块
+     * codeLanguages: 该章节使用的编程语言（如 ["python"]）
+     * hasLists: 该章节是否包含列表
+     * listStyle: 该章节列表的格式风格（如"使用 - 开头，标题加粗"）
+     * hasTables: 该章节是否包含表格
+     * hasImages: 该章节是否包含图片
+     * hasFormulas: 该章节是否包含数学公式
+
+**【摘要的作用】**
+这个摘要将用于后续的 AI 斜杠指令（/ai），AI 会根据每个章节的 format 信息生成格式一致的内容，确保整篇文档的风格统一。
 
 **【重要】内容格式要求：**
 
@@ -333,7 +407,13 @@ export function generateContentPrompt(input: ContentInput): string {
    - 理论与实践相结合
    - 提供具体的应用场景
 
-请直接返回 Markdown 格式的内容，不要包含任何额外说明。`
+4. **JSON 字符串转义**
+   - content 字段中的 Markdown 内容需要正确转义
+   - 换行符使用 \\n
+   - 双引号使用 \\"
+   - 反斜杠使用 \\\\
+
+请只返回 JSON 格式，不要包含任何额外说明或 Markdown 代码块标记。`
 }
 
 /**
@@ -425,6 +505,9 @@ export function generateTestQuestionsPrompt(input: TestQuestionsInput): string {
     hard: '困难',
   }
 
+  // 构建难度说明（如果提供了）
+  const difficultyText = difficulty ? `难度级别：${difficultyMap[difficulty]}` : ''
+
   const typeMap: Record<string, string> = {
     choice: '单选题',
     'multiple-choice': '多选题',
@@ -460,7 +543,7 @@ export function generateTestQuestionsPrompt(input: TestQuestionsInput): string {
 ${contextInfo}
 
 测试题主题：${topic}
-难度级别：${difficultyMap[difficulty]}
+${difficultyText}
 题目数量：${questionCount}
 题型：${typeDescriptions}
 
@@ -469,12 +552,11 @@ ${contextInfo}
 2. 如果提供了学习计划信息，题目应该与学习计划的主题和目标相关
 3. 如果提供了当前章节内容，题目应该基于该内容出题
 4. ${additionalContext ? `特别注意用户的补充说明："${additionalContext}"，确保生成的题目符合这些要求` : '题目清晰明确，考察核心知识点'}
-5. 难度适中，符合指定的难度级别
-6. 答案准确无误，包含详细解析
-7. **【重要】只能生成以下题型：${typeDescriptions}。严格按照这些题型生成，不要生成其他题型！**
-8. **【重要】如果用户选择了多选题（multiple-choice），必须生成多选题，不要全部生成单选题！**
-9. 题型分布尽量均匀，每种题型都要有
-10. 避免重复或相似的题目
+5. 答案准确无误，包含详细解析
+6. **【重要】只能生成以下题型：${typeDescriptions}。严格按照这些题型生成，不要生成其他题型！**
+7. **【重要】如果用户选择了多选题（multiple-choice），必须生成多选题，不要全部生成单选题！**
+8. 题型分布尽量均匀，每种题型都要有
+9. 避免重复或相似的题目
 
 **【重要】题目格式规则：**
 

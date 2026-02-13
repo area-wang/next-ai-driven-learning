@@ -45,6 +45,7 @@ interface UploadState {
 export interface TiptapEditorProps {
   title?: string
   content?: string
+  contentId?: string // 文档内容 ID，用于生成和获取摘要
   placeholder?: string
   editable?: boolean
   className?: string
@@ -59,6 +60,7 @@ export interface TiptapEditorProps {
 export function TiptapEditor({
   title = "",
   content = "",
+  contentId,
   placeholder = "输入 / 查看所有命令...",
   editable = true,
   className,
@@ -74,6 +76,7 @@ export function TiptapEditor({
   const [isAIInputOpen, setIsAIInputOpen] = React.useState(false)
   const [aiAnchorElement, setAiAnchorElement] = React.useState<HTMLElement | null>(null)
   const [aiContext, setAiContext] = React.useState("")
+  const [documentSummary, setDocumentSummary] = React.useState<string>("")
   const [floatingInput, setFloatingInput] = React.useState<{
     isOpen: boolean
     type: 'link' | 'image' | 'video' | 'inline-math' | 'block-math'
@@ -84,20 +87,147 @@ export function TiptapEditor({
     type: 'link',
   })
   const editorRef = React.useRef<Editor | null>(null)
+  const summaryGenerationTimerRef = React.useRef<NodeJS.Timeout | null>(null)
 
   // 当外部 title 改变时，更新本地 title
   React.useEffect(() => {
     setLocalTitle(title)
   }, [title])
 
+  // 获取文档摘要
+  React.useEffect(() => {
+    const fetchSummary = async () => {
+      if (!contentId) {
+        console.log('[TiptapEditor] 没有 contentId，跳过获取摘要')
+        return
+      }
+
+      console.log('[TiptapEditor] 开始获取摘要，contentId (outlineId):', contentId)
+
+      try {
+        // 使用 outlineId 参数查询（因为传递的实际上是 outlineId）
+        const response = await fetch(`/api/ai/get-summary?outlineId=${contentId}`)
+        console.log('[TiptapEditor] 摘要 API 响应状态:', response.status)
+        
+        if (response.ok) {
+          const data = await response.json() as { summary: string | null }
+          console.log('[TiptapEditor] 获取到的摘要:', data.summary ? '有摘要' : '摘要为空')
+          
+          if (data.summary) {
+            setDocumentSummary(data.summary)
+            console.log('[TiptapEditor] 摘要已设置，长度:', data.summary.length)
+          }
+        }
+      } catch (error) {
+        console.error('[TiptapEditor] 获取摘要失败:', error)
+      }
+    }
+
+    fetchSummary()
+  }, [contentId])
+
+  // 格式化结构化摘要为易读文本
+  const formatStructuredSummary = (summaryString: string): string => {
+    try {
+      const summary = JSON.parse(summaryString)
+      
+      let formatted = `# 文档摘要\n\n`
+      formatted += `**主题**: ${summary.topic || '未知'}\n`
+      formatted += `**用户需求**: ${summary.userQuery || '未知'}\n`
+      formatted += `**文档长度**: ${summary.totalLength || '未知'}\n\n`
+      
+      // 文档大纲（包含每个章节的格式信息）
+      if (summary.outline && summary.outline.length > 0) {
+        formatted += `## 文档大纲\n`
+        summary.outline.forEach((item: { 
+          title: string; 
+          level: number; 
+          summary: string;
+          format?: {
+            titleLevel: string;
+            hasCodeBlocks: boolean;
+            codeLanguages?: string[];
+            hasLists: boolean;
+            listStyle?: string;
+            hasTables: boolean;
+            hasImages: boolean;
+            hasFormulas: boolean;
+          }
+        }) => {
+          const indent = '  '.repeat(item.level - 2)
+          formatted += `${indent}- **${item.title}** (${item.format?.titleLevel || '##'})\n`
+          formatted += `${indent}  ${item.summary}\n`
+          
+          // 添加该章节的格式信息
+          if (item.format) {
+            formatted += `${indent}  格式: `
+            const formatDetails = []
+            if (item.format.hasCodeBlocks && item.format.codeLanguages && item.format.codeLanguages.length > 0) {
+              formatDetails.push(`代码块(${item.format.codeLanguages.join(', ')})`)
+            }
+            if (item.format.hasLists) {
+              formatDetails.push(`列表(${item.format.listStyle || '标准格式'})`)
+            }
+            if (item.format.hasTables) {
+              formatDetails.push('表格')
+            }
+            if (item.format.hasImages) {
+              formatDetails.push('图片')
+            }
+            if (item.format.hasFormulas) {
+              formatDetails.push('公式')
+            }
+            formatted += formatDetails.length > 0 ? formatDetails.join('、') : '纯文本'
+            formatted += `\n`
+          }
+        })
+        formatted += `\n`
+      }
+      
+      // 关键知识点
+      if (summary.keyPoints && summary.keyPoints.length > 0) {
+        formatted += `## 关键知识点\n`
+        summary.keyPoints.forEach((point: string) => {
+          formatted += `- ${point}\n`
+        })
+        formatted += `\n`
+      }
+      
+      formatted += `**重要提示**: 请保持与上述每个章节的格式一致，使用相同的标题层级、列表风格和代码块格式。`
+      
+      return formatted
+    } catch (error) {
+      console.error('解析摘要失败:', error)
+      return summaryString
+    }
+  }
+
   // 监听 AI 提示框打开事件
   React.useEffect(() => {
     const handleOpenAIPrompt = (event: Event) => {
       const customEvent = event as CustomEvent
       if (editorRef.current) {
-        // 获取当前编辑器内容作为上下文
-        const currentContent = editorRef.current.getText().substring(0, 200)
-        setAiContext(currentContent)
+        console.log('[TiptapEditor] /ai 指令触发，documentSummary:', documentSummary ? '有摘要' : '无摘要')
+        
+        // 使用文档摘要作为上下文，如果没有摘要则使用前200字符
+        let contextToUse = ''
+        if (documentSummary) {
+          // 尝试解析为结构化摘要
+          try {
+            JSON.parse(documentSummary)
+            contextToUse = formatStructuredSummary(documentSummary)
+            console.log('[TiptapEditor] 使用结构化摘要作为上下文，长度:', contextToUse.length)
+          } catch {
+            // 如果不是 JSON，直接使用
+            contextToUse = documentSummary
+            console.log('[TiptapEditor] 使用原始摘要作为上下文，长度:', contextToUse.length)
+          }
+        } else {
+          contextToUse = editorRef.current.getText().substring(0, 200)
+          console.log('[TiptapEditor] 没有摘要，使用前200字符作为上下文')
+        }
+        
+        setAiContext(contextToUse)
         
         // 获取光标位置的 DOM 元素
         const view = editorRef.current.view
@@ -125,7 +255,7 @@ export function TiptapEditor({
     return () => {
       document.removeEventListener("openAIPrompt", handleOpenAIPrompt)
     }
-  }, [])
+  }, [documentSummary])
 
   // 监听打开图片对话框的事件
   React.useEffect(() => {
@@ -653,6 +783,11 @@ export function TiptapEditor({
         }}
         onGenerate={handleAIGenerate}
         anchorElement={aiAnchorElement}
+        contentId={contentId}
+        currentContent={content}
+        onSummaryRegenerated={(summary) => {
+          setDocumentSummary(summary)
+        }}
       />
 
       {/* 通用悬浮输入框 */}

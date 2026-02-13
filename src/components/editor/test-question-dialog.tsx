@@ -26,7 +26,7 @@ interface TestQuestionDialogProps {
 
 export interface GenerateTestParams {
   topic: string
-  difficulty: 'easy' | 'medium' | 'hard'
+  difficulty?: 'easy' | 'medium' | 'hard' // 改为可选
   questionCount: number
   questionTypes: string[]
   questionTypeConfig?: Record<string, number> // 每个题型的数量配置
@@ -60,7 +60,6 @@ export function TestQuestionDialog({
 }: TestQuestionDialogProps) {
   const toast = useToast()
   const [topic, setTopic] = React.useState("")
-  const [difficulty, setDifficulty] = React.useState<'easy' | 'medium' | 'hard'>('medium')
   const [questionCount, setQuestionCount] = React.useState(5)
   const [questionTypes, setQuestionTypes] = React.useState<string[]>(['choice', 'multiple-choice', 'true-false'])
   const [questionTypeConfig, setQuestionTypeConfig] = React.useState<Record<string, number>>({})
@@ -89,7 +88,6 @@ export function TestQuestionDialog({
       } else {
         // 重置表单
         setTopic("")
-        setDifficulty('medium')
         setQuestionCount(5)
         setQuestionTypes(['choice', 'multiple-choice', 'true-false'])
         setQuestionTypeConfig({})
@@ -216,7 +214,6 @@ export function TestQuestionDialog({
     try {
       await onGenerate({
         topic: topic.trim(),
-        difficulty,
         questionCount: finalCount,
         questionTypes,
         questionTypeConfig: isRandomDistribution ? undefined : questionTypeConfig,
@@ -230,7 +227,6 @@ export function TestQuestionDialog({
 
       // 重置表单
       setTopic("")
-      setDifficulty('medium')
       setQuestionCount(5)
       setQuestionTypes(['choice', 'multiple-choice', 'true-false'])
       setQuestionTypeConfig({})
@@ -286,35 +282,6 @@ export function TestQuestionDialog({
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500 text-sm"
                 required
               />
-            </div>
-
-            {/* 难度级别 */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                难度级别
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { value: 'easy', label: '简单' },
-                  { value: 'medium', label: '中等' },
-                  { value: 'hard', label: '困难' },
-                ].map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setDifficulty(option.value as any)}
-                    disabled={isGenerating}
-                    className={cn(
-                      "px-3 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer",
-                      difficulty === option.value
-                        ? "bg-teal-500 text-white"
-                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                    )}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
             </div>
 
             {/* AI 模型选择 */}
@@ -575,11 +542,14 @@ export function TestQuestionDialog({
                 id="additionalContext"
                 value={additionalContext}
                 onChange={(e) => setAdditionalContext(e.target.value)}
-                placeholder="例如：重点考察实际应用、包含代码示例、侧重概念理解等"
+                placeholder="例如：难度适中、重点考察实际应用、包含代码示例、侧重概念理解、适合初学者等"
                 disabled={isGenerating}
-                rows={3}
+                rows={4}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500 text-sm resize-none"
               />
+              <p className="mt-1 text-xs text-gray-500">
+                💡 提示：可以在这里描述难度级别（如"简单"、"中等"、"困难"）、考察重点、题目风格等
+              </p>
             </div>
 
             {/* 提示信息 */}

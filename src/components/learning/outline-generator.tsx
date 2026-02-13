@@ -24,7 +24,7 @@ export function OutlineGenerator({
 }: OutlineGeneratorProps) {
   const [topic, setTopic] = useState(defaultTopic)
   const [goal, setGoal] = useState('')
-  const [level, setLevel] = useState<'beginner' | 'intermediate' | 'advanced'>(defaultLevel)
+  const [additionalContext, setAdditionalContext] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [generatedOutline, setGeneratedOutline] = useState<OutlineItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -51,7 +51,7 @@ export function OutlineGenerator({
           planId,
           topic: topic.trim(),
           goal: goal.trim() || undefined,
-          level,
+          additionalContext: additionalContext.trim() || undefined,
           modelId: selectedModelId, // 传递 modelId 给后端
           enableWebSearch, // 传递联网搜索开关
         }),
@@ -121,17 +121,18 @@ export function OutlineGenerator({
 
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-              难度级别
+              补充描述（可选）
             </label>
-            <select
-              value={level}
-              onChange={e => setLevel(e.target.value as any)}
-              className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 cursor-pointer"
-            >
-              <option value="beginner">初级</option>
-              <option value="intermediate">中级</option>
-              <option value="advanced">高级</option>
-            </select>
+            <textarea
+              value={additionalContext}
+              onChange={e => setAdditionalContext(e.target.value)}
+              placeholder="例如：需要循序渐进，从基础到进阶，适合初学者，包含实战案例"
+              rows={3}
+              className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              💡 提示：可以在这里描述难度级别（如"适合初学者"、"中级进阶"、"高级深入"）、内容风格、重点方向等
+            </p>
           </div>
 
           {error && (

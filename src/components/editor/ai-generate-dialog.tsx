@@ -35,7 +35,7 @@ interface AIGenerateDialogProps {
 export interface GenerateParams {
   topic: string
   goal?: string
-  level: 'beginner' | 'intermediate' | 'advanced'
+  level?: 'beginner' | 'intermediate' | 'advanced' // 改为可选
   parentDocId?: string
   // 新增：用于章节内容生成
   additionalContext?: string
@@ -57,7 +57,6 @@ export function AIGenerateDialog({
   const [topic, setTopic] = React.useState("")
   const [goal, setGoal] = React.useState("")
   const [additionalContext, setAdditionalContext] = React.useState("")
-  const [level, setLevel] = React.useState<'beginner' | 'intermediate' | 'advanced'>('beginner')
   const [depth, setDepth] = React.useState<number>(2) // 新增：默认2级
   const [isGenerating, setIsGenerating] = React.useState(false)
   const [selectedModelId, setSelectedModelId] = React.useState<string | undefined>(undefined)
@@ -79,7 +78,6 @@ export function AIGenerateDialog({
         // 生成大纲模式：使用计划信息
         setTopic(planInfo.topic)
         setGoal(planInfo.goal || "")
-        setLevel(planInfo.level)
       }
     }
   }, [isOpen, currentDoc, planInfo, parentDocTitle])
@@ -97,7 +95,6 @@ export function AIGenerateDialog({
       await onGenerate({
         topic: topic.trim(),
         goal: goal.trim() || undefined,
-        level,
         parentDocId,
         additionalContext: additionalContext.trim() || undefined,
         currentDocId: currentDoc?.id,
@@ -110,7 +107,6 @@ export function AIGenerateDialog({
       setTopic("")
       setGoal("")
       setAdditionalContext("")
-      setLevel('beginner')
       setDepth(2) // 重置层级
       onClose()
     } catch (error) {
@@ -189,44 +185,18 @@ export function AIGenerateDialog({
                 onChange={(e) => setAdditionalContext(e.target.value)}
                 placeholder={
                   currentDoc 
-                    ? "例如：重点讲解实际应用场景，包含完整代码示例" 
+                    ? "例如：重点讲解实际应用场景，包含完整代码示例，难度适中" 
                     : parentDocTitle
-                    ? "例如：需要包含实战案例，难度适中"
-                    : "例如：需要循序渐进，从基础到进阶"
+                    ? "例如：需要包含实战案例，从基础到进阶，适合初学者"
+                    : "例如：需要循序渐进，从基础到进阶，包含实战案例"
                 }
                 disabled={isGenerating}
-                rows={3}
+                rows={4}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500 text-sm resize-none"
               />
-            </div>
-
-            {/* 难度级别 */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                难度级别
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { value: 'beginner', label: '初级' },
-                  { value: 'intermediate', label: '中级' },
-                  { value: 'advanced', label: '高级' },
-                ].map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setLevel(option.value as any)}
-                    disabled={isGenerating}
-                    className={cn(
-                      "px-3 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer",
-                      level === option.value
-                        ? "bg-teal-500 text-white"
-                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                    )}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                💡 提示：可以在这里描述难度级别（如"适合初学者"、"中级进阶"、"高级深入"）、内容风格、重点方向等
+              </p>
             </div>
 
             {/* 大纲层级 - 只在生成大纲时显示 */}

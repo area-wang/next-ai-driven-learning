@@ -14,7 +14,7 @@ interface GenerateRequest {
   parentId?: string // 添加 parentId 参数
   topic: string
   goal?: string
-  level: 'beginner' | 'intermediate' | 'advanced'
+  level?: 'beginner' | 'intermediate' | 'advanced' // 改为可选
   additionalContext?: string // 添加补充描述参数
   modelId?: string // 指定使用的模型ID
   depth?: number // 新增：大纲层级深度（1-3）

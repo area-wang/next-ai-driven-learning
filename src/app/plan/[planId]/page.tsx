@@ -1523,6 +1523,7 @@ export default function PlanDetailPage() {
         <TiptapEditor
           title={currentDoc.title}
           content={currentDoc.content}
+          contentId={activeDocId} // 传递文档 ID 用于生成和获取摘要
           onTitleChange={handleTitleChange}
           onChange={handleContentChange}
           showBubbleMenu={true}

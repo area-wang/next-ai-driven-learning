@@ -19,7 +19,7 @@ interface GenerateRequest {
   chapterTitle: string
   goal?: string
   additionalContext?: string
-  level: 'beginner' | 'intermediate' | 'advanced'
+  level?: 'beginner' | 'intermediate' | 'advanced' // 改为可选
   modelId?: string // 指定使用的模型ID
 }
 
@@ -66,6 +66,45 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // 获取父文档摘要（如果当前文档有父文档）
+    let parentDocSummary = ''
+    try {
+      const db = getDbClient(request as unknown as Request)
+      if (db) {
+        // 先查询当前文档的 parentId
+        const { learningOutlines } = await import('@/db/schema')
+        const currentOutline = await db
+          .select({ parentId: learningOutlines.parentId })
+          .from(learningOutlines)
+          .where(eq(learningOutlines.id, outlineId))
+          .limit(1)
+        
+        if (currentOutline.length > 0 && currentOutline[0].parentId) {
+          const parentId = currentOutline[0].parentId
+          console.log('[API] 当前文档有父文档，parentId:', parentId)
+          
+          // 通过 parentId 查询父文档的摘要
+          const parentContent = await db
+            .select({ summary: knowledgeContents.summary })
+            .from(knowledgeContents)
+            .where(eq(knowledgeContents.outlineId, parentId))
+            .limit(1)
+          
+          if (parentContent.length > 0 && parentContent[0].summary) {
+            parentDocSummary = parentContent[0].summary
+            console.log('[API] 获取到父文档摘要，长度:', parentDocSummary.length)
+          } else {
+            console.log('[API] 父文档没有摘要')
+          }
+        } else {
+          console.log('[API] 当前文档没有父文档')
+        }
+      }
+    } catch (error) {
+      console.error('[API] 获取父文档摘要失败:', error)
+      // 失败不影响主流程
+    }
+
     // 获取 AI 配置
     console.log('[API] Getting AI config...')
     let aiClient: AIClient
@@ -99,6 +138,53 @@ export async function POST(request: NextRequest) {
     
     let prompt = generateContentPrompt(input)
     
+    // 如果有父文档摘要，添加到 prompt 前面
+    if (parentDocSummary) {
+      // 尝试解析为结构化摘要
+      try {
+        const summaryObj = JSON.parse(parentDocSummary)
+        
+        // 格式化父文档摘要
+        let formattedSummary = `# 父文档信息\n\n`
+        formattedSummary += `**主题**: ${summaryObj.topic || '未知'}\n`
+        formattedSummary += `**用户需求**: ${summaryObj.userQuery || '未知'}\n\n`
+        
+        // 父文档大纲
+        if (summaryObj.outline && summaryObj.outline.length > 0) {
+          formattedSummary += `## 父文档大纲\n`
+          summaryObj.outline.forEach((item: any) => {
+            formattedSummary += `- **${item.title}**: ${item.summary}\n`
+            if (item.format) {
+              const formatDetails = []
+              if (item.format.hasCodeBlocks) formatDetails.push('代码示例')
+              if (item.format.hasLists) formatDetails.push('列表')
+              if (item.format.hasTables) formatDetails.push('表格')
+              if (formatDetails.length > 0) {
+                formattedSummary += `  格式: ${formatDetails.join('、')}\n`
+              }
+            }
+          })
+          formattedSummary += `\n`
+        }
+        
+        // 关键知识点
+        if (summaryObj.keyPoints && summaryObj.keyPoints.length > 0) {
+          formattedSummary += `## 父文档关键知识点\n`
+          summaryObj.keyPoints.forEach((point: string) => {
+            formattedSummary += `- ${point}\n`
+          })
+          formattedSummary += `\n`
+        }
+        
+        formattedSummary += `**重要提示**: 当前章节是父文档的子章节，生成的内容应该与父文档内容相关联，可以深入展开父文档中的某个知识点，保持知识的连贯性。\n\n`
+        
+        prompt = `${formattedSummary}${prompt}`
+      } catch {
+        // 如果不是 JSON，直接使用原始摘要
+        prompt = `# 父文档摘要\n\n${parentDocSummary}\n\n**重要提示**: 当前章节是父文档的子章节，生成的内容应该与父文档内容相关联。\n\n${prompt}`
+      }
+    }
+    
     // 添加学习目标和补充描述
     if (goal || additionalContext) {
       prompt += '\n\n额外要求：\n'
@@ -127,8 +213,52 @@ export async function POST(request: NextRequest) {
 
     console.log('[API] AI response received, length:', response.length)
 
+    // 解析 JSON 响应
+    let contentData: { content: string; summary: Record<string, unknown> | string }
+    try {
+      // 清理响应：移除可能的 Markdown 代码块标记
+      let cleanedResponse = response.trim()
+      cleanedResponse = cleanedResponse.replace(/^```(?:json)?\s*\n?/i, '')
+      cleanedResponse = cleanedResponse.replace(/\n?```\s*$/i, '')
+      
+      contentData = JSON.parse(cleanedResponse)
+      
+      if (!contentData.content || !contentData.summary) {
+        throw new Error('响应格式错误：缺少 content 或 summary 字段')
+      }
+    } catch (parseError) {
+      console.error('[API] Failed to parse JSON response:', parseError)
+      // 如果解析失败，尝试将整个响应作为 content，并生成简单摘要
+      contentData = {
+        content: response,
+        summary: {
+          topic: topic,
+          userQuery: chapterTitle,
+          outline: [
+            {
+              title: chapterTitle,
+              level: 2,
+              summary: '内容总结',
+              format: {
+                titleLevel: '##',
+                hasCodeBlocks: false,
+                codeLanguages: [],
+                hasLists: true,
+                listStyle: '使用 - 开头',
+                hasTables: false,
+                hasImages: false,
+                hasFormulas: false,
+              },
+            },
+          ],
+          keyPoints: [],
+          totalLength: '未知',
+        },
+      }
+    }
+
     // 使用 marked 将 Markdown 转换为 HTML
-    let htmlContent = await marked.parse(response, {
+    let htmlContent = await marked.parse(contentData.content, {
       async: true,
       gfm: true,
       breaks: true,
@@ -234,20 +364,29 @@ export async function POST(request: NextRequest) {
       }
       
       // 更新知识内容
+      console.log('[API] Saving content and summary...')
+
+      // 将 summary 对象序列化为 JSON 字符串存储
+      const summaryString = typeof contentData.summary === 'string' 
+        ? contentData.summary 
+        : JSON.stringify(contentData.summary)
+
       await db
         .update(knowledgeContents)
         .set({
           content: htmlContent,
+          summary: summaryString, // 保存 LLM 生成的摘要（JSON 字符串）
           aiGenerated: true,
           updatedAt: new Date(),
         })
         .where(eq(knowledgeContents.outlineId, outlineId))
 
-      console.log('[API] Content updated successfully')
+      console.log('[API] Content and summary updated successfully')
 
       return NextResponse.json({
         content: htmlContent,
-        markdown: response,
+        summary: contentData.summary,
+        markdown: contentData.content,
         saved: true,
       })
     } catch (dbError) {
@@ -255,7 +394,8 @@ export async function POST(request: NextRequest) {
       // 即使保存失败，也返回生成的内容
       return NextResponse.json({
         content: htmlContent,
-        markdown: response,
+        summary: contentData.summary,
+        markdown: contentData.content,
         saved: false,
         error: '保存失败，但内容已生成',
       })

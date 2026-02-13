@@ -59,6 +59,7 @@ export const knowledgeContents = sqliteTable('knowledge_contents', {
   id: text('id').primaryKey().$defaultFn(() => createId()),
   outlineId: text('outline_id').notNull().references(() => learningOutlines.id),
   content: text('content').notNull(),
+  summary: text('summary'), // 文档摘要，用于 AI 上下文
   contentType: text('content_type').default('rich_text'),
   aiGenerated: integer('ai_generated', { mode: 'boolean' }).default(true),
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),

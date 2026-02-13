@@ -23,6 +23,7 @@ const MIGRATION_FILES = [
   '0007_add_config_mode_to_ai_models.sql',
   '0008_add_web_search_config.sql',
   '0009_add_tavily_api_key.sql',
+  '0010_add_content_summary.sql',
 ];
 
 console.log('🚀 开始迁移数据库到本地...');

@@ -17,7 +17,7 @@ interface GenerateRequest {
   planGoal?: string // 学习计划目标
   currentContent?: string // 当前章节内容
   additionalContext?: string // 用户自定义描述
-  difficulty: 'easy' | 'medium' | 'hard'
+  difficulty?: 'easy' | 'medium' | 'hard' // 改为可选
   questionCount: number
   questionTypes: string[]
   modelId?: string // 指定使用的模型ID

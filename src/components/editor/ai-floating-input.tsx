@@ -9,6 +9,9 @@ interface AIFloatingInputProps {
   onClose: () => void
   onGenerate: (prompt: string) => Promise<void>
   anchorElement?: HTMLElement | null  // 记录 /AI 指令的位置元素
+  contentId?: string // 文档 ID，用于重新生成摘要
+  currentContent?: string // 当前文档内容
+  onSummaryRegenerated?: (summary: string) => void // 摘要重新生成后的回调
 }
 
 export function AIFloatingInput({
@@ -16,9 +19,13 @@ export function AIFloatingInput({
   onClose,
   onGenerate,
   anchorElement,
+  contentId,
+  currentContent,
+  onSummaryRegenerated,
 }: AIFloatingInputProps) {
   const [prompt, setPrompt] = React.useState("")
   const [isLoading, setIsLoading] = React.useState(false)
+  const [isRegeneratingSummary, setIsRegeneratingSummary] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [position, setPosition] = React.useState({ x: 0, y: 0 })
   const inputRef = React.useRef<HTMLInputElement>(null)
@@ -123,6 +130,49 @@ export function AIFloatingInput({
     }
   }
 
+  const handleRegenerateSummary = async () => {
+    if (!contentId || !currentContent) return
+
+    setIsRegeneratingSummary(true)
+    setError(null)
+
+    try {
+      const response = await fetch('/api/ai/generate-summary', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contentId,
+          content: currentContent,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('生成摘要失败')
+      }
+
+      const data = await response.json() as { summary: Record<string, unknown> | string }
+      
+      // 将摘要对象序列化为 JSON 字符串传递给父组件
+      const summaryString = typeof data.summary === 'string' 
+        ? data.summary 
+        : JSON.stringify(data.summary)
+      
+      onSummaryRegenerated?.(summaryString)
+      
+      // 显示成功提示
+      const event = new CustomEvent("showToast", {
+        detail: { type: 'success', message: '摘要已更新' },
+      })
+      document.dispatchEvent(event)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "生成摘要失败")
+    } finally {
+      setIsRegeneratingSummary(false)
+    }
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
@@ -161,11 +211,6 @@ export function AIFloatingInput({
                 className="w-full px-3 py-2 rounded-lg border-2 border-[var(--color-primary)]/20 bg-white focus:border-[var(--color-primary)] focus:outline-none transition-colors text-sm"
                 disabled={isLoading}
               />
-              {isLoading && (
-                <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                  <Loader2 className="w-4 h-4 animate-spin text-[var(--color-primary)]" />
-                </div>
-              )}
             </div>
             
             {/* 发送按钮 */}
@@ -197,6 +242,36 @@ export function AIFloatingInput({
               <X className="w-4 h-4 text-gray-500" />
             </button>
           </div>
+
+          {/* 重新生成摘要按钮 */}
+          {contentId && currentContent && (
+            <div className="mt-2 pt-2 border-t border-gray-200">
+              <button
+                onClick={handleRegenerateSummary}
+                disabled={isRegeneratingSummary}
+                className={cn(
+                  "w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2",
+                  isRegeneratingSummary
+                    ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                    : "bg-blue-50 text-blue-700 hover:bg-blue-100 cursor-pointer"
+                )}
+              >
+                {isRegeneratingSummary ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    生成摘要中...
+                  </>
+                ) : (
+                  <>
+                    🔄 重新生成文档摘要
+                  </>
+                )}
+              </button>
+              <p className="mt-1 text-xs text-gray-500 text-center">
+                更新摘要后，AI 将基于新摘要生成内容
+              </p>
+            </div>
+          )}
 
           {/* 错误提示 */}
           {error && (
