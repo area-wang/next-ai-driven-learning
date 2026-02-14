@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { eq, and } from 'drizzle-orm'
-import { marked } from 'marked'
+import MarkdownIt from 'markdown-it'
 import { getDbClient } from '@/lib/db-connection'
 import { knowledgeContents } from '@/db/schema'
 import { generateContentPrompt, type ContentInput } from '@/lib/ai/prompts'
@@ -23,9 +23,11 @@ interface GenerateRequest {
   modelId?: string // 指定使用的模型ID
 }
 
-// 配置 marked 选项
-marked.setOptions({
-  gfm: true, // 启用 GitHub Flavored Markdown
+// 创建 markdown-it 实例
+const md = new MarkdownIt({
+  html: true, // 允许 HTML 标签
+  linkify: true, // 自动转换 URL 为链接
+  typographer: true, // 启用智能引号和其他排版优化
   breaks: true, // 将换行符转换为 <br>
 })
 
@@ -232,15 +234,11 @@ ${JSON.stringify(summaryObj, null, 2)}
       }
     }
 
-    // 使用 marked 将 Markdown 转换为 HTML
-    let htmlContent = await marked.parse(contentData.content, {
-      async: true,
-      gfm: true,
-      breaks: true,
-    })
+    // 使用 markdown-it 将 Markdown 转换为 HTML
+    let htmlContent = md.render(contentData.content)
 
     // 后处理：修复常见的格式问题
-    // 1. 移除列表项内多余的 <p> 标签（marked 有时会在列表项内添加 <p>）
+    // 1. 移除列表项内多余的 <p> 标签
     htmlContent = htmlContent.replace(/<li>\s*<p>(.*?)<\/p>\s*<\/li>/g, '<li>$1</li>')
     
     // 2. 移除空的段落标签

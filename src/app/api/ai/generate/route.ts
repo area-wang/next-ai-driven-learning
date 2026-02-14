@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import MarkdownIt from 'markdown-it'
 import { type AIClient, OpenAIClient } from '@/lib/ai/client'
 import { getAIConfig } from '@/lib/ai/get-ai-config'
 import { getCurrentUserId } from '@/lib/auth/get-user'
@@ -15,84 +16,13 @@ interface GenerateRequest {
   enableWebSearch?: boolean // 是否启用联网搜索
 }
 
-// 简单的 Markdown 转 HTML 转换
-function markdownToHtml(markdown: string): string {
-  let html = markdown
-  
-  // 用占位符保存代码块，防止被其他规则破坏
-  const codeBlocks: string[] = []
-  const codeBlockPlaceholder = '___CODE_BLOCK_PLACEHOLDER_'
-  
-  // 首先提取代码块（三个反引号）
-  html = html.replace(/```([\w]*)\n([\s\S]*?)```/g, (match, lang, code) => {
-    const language = lang || 'text'
-    const escapedCode = code.trim()
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;')
-    const codeBlockHtml = `<pre><code class="language-${language}">${escapedCode}</code></pre>`
-    codeBlocks.push(codeBlockHtml)
-    return `${codeBlockPlaceholder}${codeBlocks.length - 1}___`
-  })
-  
-  // 处理标题（必须在其他处理之前）
-  html = html.replace(/^### (.*?)$/gm, '<h3>$1</h3>')
-  html = html.replace(/^## (.*?)$/gm, '<h2>$1</h2>')
-  html = html.replace(/^# (.*?)$/gm, '<h1>$1</h1>')
-  
-  // 处理行内代码（单个反引号）
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>')
-  
-  // 处理粗体
-  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-  
-  // 处理斜体
-  html = html.replace(/\*(.*?)\*/g, '<em>$1</em>')
-  
-  // 处理列表项
-  html = html.replace(/^- (.*?)$/gm, '<li>$1</li>')
-  
-  // 处理段落 - 保留已处理的 HTML 标签
-  const lines = html.split('\n')
-  const result: string[] = []
-  let paragraphLines: string[] = []
-  
-  for (const line of lines) {
-    const trimmed = line.trim()
-    
-    // 如果是 HTML 标签或占位符或空行
-    if (trimmed.startsWith('<') || trimmed.startsWith(codeBlockPlaceholder) || trimmed === '') {
-      // 先输出之前积累的段落
-      if (paragraphLines.length > 0) {
-        result.push('<p>' + paragraphLines.join(' ') + '</p>')
-        paragraphLines = []
-      }
-      // 输出 HTML 标签或占位符或空行
-      if (trimmed !== '') {
-        result.push(trimmed)
-      }
-    } else {
-      // 普通文本行，积累到段落中
-      paragraphLines.push(trimmed)
-    }
-  }
-  
-  // 输出最后的段落
-  if (paragraphLines.length > 0) {
-    result.push('<p>' + paragraphLines.join(' ') + '</p>')
-  }
-  
-  let finalHtml = result.join('\n').trim()
-  
-  // 恢复代码块
-  codeBlocks.forEach((codeBlock, index) => {
-    finalHtml = finalHtml.replace(`${codeBlockPlaceholder}${index}___`, codeBlock)
-  })
-  
-  return finalHtml
-}
+// 创建 markdown-it 实例
+const md = new MarkdownIt({
+  html: true, // 允许 HTML 标签
+  linkify: true, // 自动转换 URL 为链接
+  typographer: true, // 启用智能引号和其他排版优化
+  breaks: true, // 将换行符转换为 <br>
+})
 
 export async function POST(request: NextRequest) {
   try {
@@ -211,8 +141,8 @@ export async function POST(request: NextRequest) {
       maxTokens: 100000,
     })
 
-    // 将 Markdown 转换为 HTML
-    const htmlContent = markdownToHtml(generatedContent)
+    // 使用 markdown-it 将 Markdown 转换为 HTML（支持表格、GFM 等）
+    const htmlContent = md.render(generatedContent)
 
     return NextResponse.json({
       content: htmlContent,

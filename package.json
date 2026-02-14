@@ -43,7 +43,6 @@
 		"lowlight": "^3.3.0",
 		"lucide-react": "^0.562.0",
 		"markdown-it": "^14.1.0",
-		"marked": "^17.0.1",
 		"mermaid": "^11.12.2",
 		"next": "16.0.7",
 		"next-auth": "^5.0.0-beta.30",
@@ -57,7 +56,6 @@
 	"devDependencies": {
 		"@eslint/eslintrc": "3",
 		"@tailwindcss/postcss": "4.1.17",
-		"@types/marked": "^5.0.2",
 		"@types/node": "24.10.1",
 		"@types/react": "19.2.7",
 		"@types/react-dom": "19.2.3",

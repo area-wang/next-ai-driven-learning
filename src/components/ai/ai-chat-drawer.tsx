@@ -27,7 +27,7 @@ import {
 } from 'lucide-react'
 import { useToast } from '@/components/ui/toast-container'
 import { ConfiguredModelSelector } from './configured-model-selector'
-import { marked } from 'marked'
+import MarkdownIt from 'markdown-it'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -63,18 +63,20 @@ export function AIChatDrawer({ open, onOpenChange }: AIChatDrawerProps) {
   const inputRef = useRef<HTMLDivElement>(null)
   const toast = useToast()
 
-  // 配置 marked
-  useMemo(() => {
-    marked.setOptions({
-      breaks: true, // 支持 GFM 换行
-      gfm: true, // 启用 GitHub Flavored Markdown
+  // 创建 markdown-it 实例
+  const md = useMemo(() => {
+    return new MarkdownIt({
+      html: true, // 允许 HTML 标签
+      linkify: true, // 自动转换 URL 为链接
+      typographer: true, // 启用智能引号和其他排版优化
+      breaks: true, // 将换行符转换为 <br>
     })
   }, [])
 
   // Markdown 渲染函数
   const renderMarkdown = (content: string) => {
     try {
-      return marked.parse(content) as string
+      return md.render(content)
     } catch (error) {
       console.error('Markdown 渲染失败:', error)
       return content
