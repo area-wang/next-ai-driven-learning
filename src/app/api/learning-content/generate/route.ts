@@ -251,8 +251,6 @@ export async function POST(request: NextRequest) {
               },
             },
           ],
-          keyPoints: [],
-          totalLength: '未知',
         },
       }
     }

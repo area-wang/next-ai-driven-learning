@@ -171,13 +171,19 @@ export function ConfiguredModelSelector({
         {isOpen && (
           <>
             <div
-              className="fixed inset-0 z-40"
+              className="fixed inset-0 z-[55]"
               onClick={() => setIsOpen(false)}
             />
             <div 
-              className={`absolute left-0 right-0 bg-white/95 backdrop-blur-md border border-[var(--color-border-light)] rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto ${
-                dropdownPosition === 'top' ? 'bottom-full mb-1' : 'top-full mt-1'
-              }`}
+              className={`fixed bg-white/95 backdrop-blur-md border border-[var(--color-border-light)] rounded-lg shadow-lg z-[60] max-h-60 overflow-y-auto`}
+              style={{
+                left: buttonRef.current?.getBoundingClientRect().left,
+                width: buttonRef.current?.getBoundingClientRect().width,
+                ...(dropdownPosition === 'top' 
+                  ? { bottom: window.innerHeight - (buttonRef.current?.getBoundingClientRect().top || 0) + 4 }
+                  : { top: (buttonRef.current?.getBoundingClientRect().bottom || 0) + 4 }
+                )
+              }}
             >
               {models.map((model) => (
                 <button

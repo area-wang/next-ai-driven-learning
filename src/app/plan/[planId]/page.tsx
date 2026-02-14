@@ -1426,7 +1426,7 @@ export default function PlanDetailPage() {
   return (
     <div className="h-screen flex flex-col bg-gradient-to-br from-teal-50 via-cyan-50 to-blue-50">
       {/* 顶部标题栏 */}
-      <div className="flex-shrink-0 border-b-4 border-white/50 bg-white/80 backdrop-blur-md px-6 py-4 shadow-[0_4px_12px_rgba(0,0,0,0.05)]">
+      <div className="flex-shrink-0 border-b-4 border-white/50 bg-white/80 backdrop-blur-md px-6 py-4 shadow-[0_4px_12px_rgba(0,0,0,0.05)] relative z-40">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button

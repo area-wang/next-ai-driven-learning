@@ -24,9 +24,7 @@ interface ContentOutlineProps {
 
 export function ContentOutline({ editor, className }: ContentOutlineProps) {
   const [headings, setHeadings] = React.useState<HeadingItem[]>([])
-  const [expandedLevels, setExpandedLevels] = React.useState<Set<number>>(
-    new Set([1, 2, 3, 4, 5, 6])
-  )
+  const [expandedIds, setExpandedIds] = React.useState<Set<string>>(new Set())
   const [activeId, setActiveId] = React.useState<string | null>(null)
 
   // 提取文档中的标题
@@ -201,13 +199,13 @@ export function ContentOutline({ editor, className }: ContentOutlineProps) {
   }, [editor])
 
   // 切换展开/收起
-  const toggleLevel = React.useCallback((level: number) => {
-    setExpandedLevels((prev) => {
+  const toggleExpanded = React.useCallback((id: string) => {
+    setExpandedIds((prev) => {
       const next = new Set(prev)
-      if (next.has(level)) {
-        next.delete(level)
+      if (next.has(id)) {
+        next.delete(id)
       } else {
-        next.add(level)
+        next.add(id)
       }
       return next
     })
@@ -245,7 +243,7 @@ export function ContentOutline({ editor, className }: ContentOutlineProps) {
     depth: number = 0
   ) => {
     const hasChildren = item.children && item.children.length > 0
-    const isExpanded = expandedLevels.has(item.level)
+    const isExpanded = expandedIds.has(item.id)
     const isActive = activeId === item.id
 
     const handleHeadingClick = () => {
@@ -272,7 +270,7 @@ export function ContentOutline({ editor, className }: ContentOutlineProps) {
               type="button"
               onClick={(e) => {
                 e.stopPropagation()
-                toggleLevel(item.level)
+                toggleExpanded(item.id)
               }}
               className="flex items-center justify-center w-4 h-4 rounded hover:bg-gray-200 transition-colors"
               aria-label={isExpanded ? "收起" : "展开"}
@@ -307,7 +305,7 @@ export function ContentOutline({ editor, className }: ContentOutlineProps) {
         )}
       </div>
     )
-  }, [activeId, expandedLevels, scrollToHeading, toggleLevel])
+  }, [activeId, expandedIds, scrollToHeading, toggleExpanded])
 
   if (!editor || headings.length === 0) {
     return (
