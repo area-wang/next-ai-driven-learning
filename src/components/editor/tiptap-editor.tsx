@@ -50,6 +50,7 @@ export interface TiptapEditorProps {
   markdown?: string // Markdown 格式内容（优先使用）
   contentId?: string // 文档内容 ID，用于生成和获取摘要
   planTopic?: string // 学习计划主题
+  modelId?: string // 选中的模型 ID（用于 /AI 指令）
   placeholder?: string
   editable?: boolean
   className?: string
@@ -68,6 +69,7 @@ export function TiptapEditor({
   markdown,
   contentId,
   planTopic,
+  modelId,
   placeholder = "输入 / 查看所有命令...",
   editable = true,
   className,
@@ -323,6 +325,7 @@ export function TiptapEditor({
           context: aiContext,
           documentTitle: localTitle,
           planTopic,
+          modelId, // 传递选中的模型 ID
         }),
       })
 

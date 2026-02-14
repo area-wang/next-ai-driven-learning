@@ -1561,6 +1561,7 @@ export default function PlanDetailPage() {
           content={currentDoc.content}
           contentId={activeDocId} // 传递文档 ID 用于生成和获取摘要
           planTopic={planInfo.topic} // 传递学习计划主题
+          modelId={selectedModelId} // 传递选中的模型 ID
           onTitleChange={handleTitleChange}
           onChange={handleContentChange}
           showBubbleMenu={true}
