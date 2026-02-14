@@ -58,7 +58,7 @@ export const learningOutlines = sqliteTable('learning_outlines', {
 export const knowledgeContents = sqliteTable('knowledge_contents', {
   id: text('id').primaryKey().$defaultFn(() => createId()),
   outlineId: text('outline_id').notNull().references(() => learningOutlines.id),
-  content: text('content').notNull(),
+  content: text('content').notNull(), // 存储 HTML 格式内容
   summary: text('summary'), // 文档摘要，用于 AI 上下文
   contentType: text('content_type').default('rich_text'),
   aiGenerated: integer('ai_generated', { mode: 'boolean' }).default(true),

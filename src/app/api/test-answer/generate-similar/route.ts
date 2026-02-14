@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
 \`\`\`
 
 注意：
-- 如果是选择题，必须包含 options 数组
+- 如果是选择题，必须包含 options 数组，选项标签使用 A、B、C、D 等
 - 如果是其他题型，options 可以省略
 - 只返回 JSON，不要返回其他内容`
 

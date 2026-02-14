@@ -441,8 +441,14 @@ export const MermaidNode = Node.create({
     ]
   },
 
-  renderHTML({ HTMLAttributes }) {
-    return ['div', mergeAttributes(HTMLAttributes, { 'data-type': 'mermaid' })]
+  renderHTML({ node, HTMLAttributes }) {
+    return [
+      'div',
+      mergeAttributes(HTMLAttributes, {
+        'data-type': 'mermaid',
+        'data-content': encodeURIComponent(node.attrs.content || ''),
+      }),
+    ]
   },
 
   addNodeView() {

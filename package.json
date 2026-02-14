@@ -34,6 +34,7 @@
 		"@types/bcryptjs": "^2.4.6",
 		"@types/katex": "^0.16.8",
 		"@types/markdown-it": "^14.1.2",
+		"@types/turndown": "^5.0.6",
 		"bcryptjs": "^3.0.3",
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
@@ -49,7 +50,9 @@
 		"react": "19.2.1",
 		"react-dom": "19.2.1",
 		"tailwind-merge": "^3.4.0",
-		"tippy.js": "^6.3.7"
+		"tippy.js": "^6.3.7",
+		"turndown": "^7.2.2",
+		"turndown-plugin-gfm": "^1.0.2"
 	},
 	"devDependencies": {
 		"@eslint/eslintrc": "3",

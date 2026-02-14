@@ -35,6 +35,8 @@ import { AIFloatingInput } from "./ai-floating-input"
 import { FloatingInput } from "./floating-input"
 import { Details, Summary } from "./details-extension"
 import { SimilarQuestionButton } from "./similar-question-button-extension"
+import { exportEditorAsMarkdown } from "@/lib/export-markdown"
+import { Download } from "lucide-react"
 
 interface UploadState {
   fileName: string
@@ -44,8 +46,10 @@ interface UploadState {
 
 export interface TiptapEditorProps {
   title?: string
-  content?: string
+  content?: string // HTML 格式内容
+  markdown?: string // Markdown 格式内容（优先使用）
   contentId?: string // 文档内容 ID，用于生成和获取摘要
+  planTopic?: string // 学习计划主题
   placeholder?: string
   editable?: boolean
   className?: string
@@ -55,12 +59,15 @@ export interface TiptapEditorProps {
   showBubbleMenu?: boolean // 是否显示浮动工具栏
   onEditorReady?: (editor: Editor) => void // 编辑器准备好的回调
   onSimilarQuestionClick?: (questionIndex: number) => void // 举一反三按钮点击回调
+  showExportButton?: boolean // 是否显示导出按钮
 }
 
 export function TiptapEditor({
   title = "",
   content = "",
+  markdown,
   contentId,
+  planTopic,
   placeholder = "输入 / 查看所有命令...",
   editable = true,
   className,
@@ -70,9 +77,11 @@ export function TiptapEditor({
   showBubbleMenu = true, // 默认显示浮动工具栏
   onEditorReady,
   onSimilarQuestionClick,
+  showExportButton = true, // 默认显示导出按钮
 }: TiptapEditorProps) {
   const [uploadState, setUploadState] = React.useState<UploadState | null>(null)
   const [localTitle, setLocalTitle] = React.useState(title)
+  const [localMarkdown, setLocalMarkdown] = React.useState(markdown || "") // 保存 markdown
   const [isAIInputOpen, setIsAIInputOpen] = React.useState(false)
   const [aiAnchorElement, setAiAnchorElement] = React.useState<HTMLElement | null>(null)
   const [aiContext, setAiContext] = React.useState("")
@@ -89,33 +98,31 @@ export function TiptapEditor({
   const editorRef = React.useRef<Editor | null>(null)
   const summaryGenerationTimerRef = React.useRef<NodeJS.Timeout | null>(null)
 
-  // 当外部 title 改变时，更新本地 title
+  // 当外部 title 或 markdown 改变时，更新本地状态
   React.useEffect(() => {
     setLocalTitle(title)
   }, [title])
+
+  React.useEffect(() => {
+    setLocalMarkdown(markdown || "")
+  }, [markdown])
 
   // 获取文档摘要
   React.useEffect(() => {
     const fetchSummary = async () => {
       if (!contentId) {
-        console.log('[TiptapEditor] 没有 contentId，跳过获取摘要')
         return
       }
-
-      console.log('[TiptapEditor] 开始获取摘要，contentId (outlineId):', contentId)
 
       try {
         // 使用 outlineId 参数查询（因为传递的实际上是 outlineId）
         const response = await fetch(`/api/ai/get-summary?outlineId=${contentId}`)
-        console.log('[TiptapEditor] 摘要 API 响应状态:', response.status)
         
         if (response.ok) {
           const data = await response.json() as { summary: string | null }
-          console.log('[TiptapEditor] 获取到的摘要:', data.summary ? '有摘要' : '摘要为空')
           
           if (data.summary) {
             setDocumentSummary(data.summary)
-            console.log('[TiptapEditor] 摘要已设置，长度:', data.summary.length)
           }
         }
       } catch (error) {
@@ -126,105 +133,25 @@ export function TiptapEditor({
     fetchSummary()
   }, [contentId])
 
-  // 格式化结构化摘要为易读文本
-  const formatStructuredSummary = (summaryString: string): string => {
-    try {
-      const summary = JSON.parse(summaryString)
-      
-      let formatted = `# 文档摘要\n\n`
-      formatted += `**主题**: ${summary.topic || '未知'}\n`
-      formatted += `**用户需求**: ${summary.userQuery || '未知'}\n`
-      formatted += `**文档长度**: ${summary.totalLength || '未知'}\n\n`
-      
-      // 文档大纲（包含每个章节的格式信息）
-      if (summary.outline && summary.outline.length > 0) {
-        formatted += `## 文档大纲\n`
-        summary.outline.forEach((item: { 
-          title: string; 
-          level: number; 
-          summary: string;
-          format?: {
-            titleLevel: string;
-            hasCodeBlocks: boolean;
-            codeLanguages?: string[];
-            hasLists: boolean;
-            listStyle?: string;
-            hasTables: boolean;
-            hasImages: boolean;
-            hasFormulas: boolean;
-          }
-        }) => {
-          const indent = '  '.repeat(item.level - 2)
-          formatted += `${indent}- **${item.title}** (${item.format?.titleLevel || '##'})\n`
-          formatted += `${indent}  ${item.summary}\n`
-          
-          // 添加该章节的格式信息
-          if (item.format) {
-            formatted += `${indent}  格式: `
-            const formatDetails = []
-            if (item.format.hasCodeBlocks && item.format.codeLanguages && item.format.codeLanguages.length > 0) {
-              formatDetails.push(`代码块(${item.format.codeLanguages.join(', ')})`)
-            }
-            if (item.format.hasLists) {
-              formatDetails.push(`列表(${item.format.listStyle || '标准格式'})`)
-            }
-            if (item.format.hasTables) {
-              formatDetails.push('表格')
-            }
-            if (item.format.hasImages) {
-              formatDetails.push('图片')
-            }
-            if (item.format.hasFormulas) {
-              formatDetails.push('公式')
-            }
-            formatted += formatDetails.length > 0 ? formatDetails.join('、') : '纯文本'
-            formatted += `\n`
-          }
-        })
-        formatted += `\n`
-      }
-      
-      // 关键知识点
-      if (summary.keyPoints && summary.keyPoints.length > 0) {
-        formatted += `## 关键知识点\n`
-        summary.keyPoints.forEach((point: string) => {
-          formatted += `- ${point}\n`
-        })
-        formatted += `\n`
-      }
-      
-      formatted += `**重要提示**: 请保持与上述每个章节的格式一致，使用相同的标题层级、列表风格和代码块格式。`
-      
-      return formatted
-    } catch (error) {
-      console.error('解析摘要失败:', error)
-      return summaryString
-    }
-  }
-
   // 监听 AI 提示框打开事件
   React.useEffect(() => {
     const handleOpenAIPrompt = (event: Event) => {
       const customEvent = event as CustomEvent
       if (editorRef.current) {
-        console.log('[TiptapEditor] /ai 指令触发，documentSummary:', documentSummary ? '有摘要' : '无摘要')
-        
-        // 使用文档摘要作为上下文，如果没有摘要则使用前200字符
+        // 直接传递 JSON 格式的摘要，不再格式化为 Markdown
         let contextToUse = ''
         if (documentSummary) {
           // 尝试解析为结构化摘要
           try {
             JSON.parse(documentSummary)
-            contextToUse = formatStructuredSummary(documentSummary)
-            console.log('[TiptapEditor] 使用结构化摘要作为上下文，长度:', contextToUse.length)
+            // 直接使用 JSON 字符串
+            contextToUse = documentSummary
           } catch {
             // 如果不是 JSON，直接使用
             contextToUse = documentSummary
-            console.log('[TiptapEditor] 使用原始摘要作为上下文，长度:', contextToUse.length)
           }
         } else {
           contextToUse = editorRef.current.getText().substring(0, 200)
-          console.log('[TiptapEditor] 没有摘要，使用前200字符作为上下文')
         }
         
         setAiContext(contextToUse)
@@ -394,7 +321,8 @@ export function TiptapEditor({
         body: JSON.stringify({
           prompt,
           context: aiContext,
-          learningPlanTitle: localTitle,
+          documentTitle: localTitle,
+          planTopic,
         }),
       })
 
@@ -738,15 +666,45 @@ export function TiptapEditor({
       <div className={cn("flex-1 flex flex-col bg-white overflow-hidden", className)}>
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-full px-8 py-12">
-            {/* 标题输入框 */}
-            <input
-              type="text"
-              value={localTitle}
-              onChange={handleTitleChange}
-              placeholder="无标题"
-              disabled={!editable}
-              className="w-full text-4xl font-bold text-[var(--color-text)] placeholder:text-gray-300 bg-transparent border-none outline-none focus:outline-none focus:ring-0 mb-4"
-            />
+            {/* 标题输入框和导出按钮 */}
+            <div className="flex items-center gap-4 mb-4">
+              <input
+                type="text"
+                value={localTitle}
+                onChange={handleTitleChange}
+                placeholder="无标题"
+                disabled={!editable}
+                className="flex-1 text-4xl font-bold text-[var(--color-text)] placeholder:text-gray-300 bg-transparent border-none outline-none focus:outline-none focus:ring-0"
+              />
+              {showExportButton && editor && (
+                <button
+                  onClick={() => {
+                    // 优先使用 markdown，如果没有则从 HTML 转换
+                    if (localMarkdown) {
+                      const fullMarkdown = `# ${localTitle || '无标题'}\n\n${localMarkdown}`
+                      const filename = (localTitle || '无标题').replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_')
+                      const blob = new Blob([fullMarkdown], { type: 'text/markdown;charset=utf-8' })
+                      const url = URL.createObjectURL(blob)
+                      const link = document.createElement('a')
+                      link.href = url
+                      link.download = `${filename}.md`
+                      document.body.appendChild(link)
+                      link.click()
+                      document.body.removeChild(link)
+                      URL.revokeObjectURL(url)
+                    } else {
+                      // 传递编辑器实例而不是 HTML 字符串
+                      exportEditorAsMarkdown(localTitle || '无标题', editor)
+                    }
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  title="导出为 Markdown"
+                >
+                  <Download className="w-4 h-4" />
+                  导出 MD
+                </button>
+              )}
+            </div>
             
             {/* 编辑器内容 */}
             <EditorContent editor={editor} />

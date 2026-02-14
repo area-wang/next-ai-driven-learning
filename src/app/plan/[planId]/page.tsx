@@ -18,13 +18,14 @@ import { OutlinePreviewDialog } from "@/components/editor/outline-preview-dialog
 import { ConfiguredModelSelector } from "@/components/ai/configured-model-selector"
 import { type Editor } from "@tiptap/react"
 import { useAutoSave } from "@/hooks/use-auto-save"
-import { Sparkles, Loader2, ChevronLeft, ChevronRight, BookOpen, ClipboardCheck } from "lucide-react"
+import { Sparkles, Loader2, ChevronLeft, ChevronRight, BookOpen, ClipboardCheck, Download } from "lucide-react"
 import { useToast } from "@/components/ui/toast-container"
 import { LearningToolsSidebar } from "@/components/learning/learning-tools-sidebar"
 import { FeynmanConceptDialog } from "@/components/feynman/feynman-concept-dialog"
 import { FlashcardViewDialog } from "@/components/flashcards/flashcard-view-dialog"
 import { ReviewScheduleDialog } from "@/components/review/review-schedule-dialog"
 import { CornellNoteDialog } from "@/components/cornell/cornell-note-dialog"
+import { exportEditorAsMarkdown } from "@/lib/export-markdown"
 
 export default function PlanDetailPage() {
   const params = useParams()
@@ -927,8 +928,27 @@ export default function PlanDetailPage() {
   const handleTestGenerate = React.useCallback(async (params: GenerateTestParams) => {
     setIsTestGenerating(true)
     try {
-      // 获取当前文档内容作为上下文
-      const currentContent = activeDocId ? documentContents[activeDocId]?.content : undefined
+      // 获取当前文档的摘要作为上下文（优先使用摘要，如果没有则使用内容）
+      let currentContext: string | undefined
+      if (activeDocId) {
+        // 尝试获取摘要
+        try {
+          const response = await fetch(`/api/ai/get-summary?outlineId=${activeDocId}`)
+          if (response.ok) {
+            const data = await response.json() as { summary: string | null }
+            if (data.summary) {
+              currentContext = data.summary // 使用 JSON 格式的摘要
+            }
+          }
+        } catch (error) {
+          console.error('获取摘要失败:', error)
+        }
+        
+        // 如果没有摘要，降级使用内容
+        if (!currentContext) {
+          currentContext = documentContents[activeDocId]?.content
+        }
+      }
 
       // 直接调用 API，让后端处理配置
       const response = await fetch('/api/test-questions/generate', {
@@ -940,7 +960,7 @@ export default function PlanDetailPage() {
           topic: params.topic,
           planTopic: planInfo.topic, // 添加学习计划主题
           planGoal: planInfo.goal, // 添加学习计划目标
-          currentContent, // 添加当前章节内容
+          currentContent: currentContext, // 传递摘要或内容
           additionalContext: params.additionalContext, // 添加用户自定义描述
           difficulty: params.difficulty,
           questionCount: params.questionCount,
@@ -1451,6 +1471,22 @@ export default function PlanDetailPage() {
             />
             
             <div className="flex items-center gap-2">
+              {/* 导出按钮 */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (editorInstanceRef.current) {
+                    exportEditorAsMarkdown(currentDoc.title || '无标题', editorInstanceRef.current)
+                  }
+                }}
+                disabled={!activeDocId}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gray-500 text-white text-sm font-medium hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                title="导出为 Markdown"
+              >
+                <Download className="w-4 h-4" />
+                导出 MD
+              </button>
+
               {/* 答题按钮（仅测试题文档显示） */}
               {isTestDocument && (
                 <button
@@ -1524,9 +1560,11 @@ export default function PlanDetailPage() {
           title={currentDoc.title}
           content={currentDoc.content}
           contentId={activeDocId} // 传递文档 ID 用于生成和获取摘要
+          planTopic={planInfo.topic} // 传递学习计划主题
           onTitleChange={handleTitleChange}
           onChange={handleContentChange}
           showBubbleMenu={true}
+          showExportButton={false} // 导出按钮已移到顶部
           className="flex-1"
           onEditorReady={(editor) => {
             editorInstanceRef.current = editor

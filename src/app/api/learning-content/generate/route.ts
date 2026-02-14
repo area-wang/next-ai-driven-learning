@@ -144,41 +144,18 @@ export async function POST(request: NextRequest) {
       try {
         const summaryObj = JSON.parse(parentDocSummary)
         
-        // 格式化父文档摘要
-        let formattedSummary = `# 父文档信息\n\n`
-        formattedSummary += `**主题**: ${summaryObj.topic || '未知'}\n`
-        formattedSummary += `**用户需求**: ${summaryObj.userQuery || '未知'}\n\n`
+        // 直接使用 JSON 格式传递父文档摘要
+        const parentSummaryPrompt = `# 父文档摘要
+
+以下是父文档的结构化摘要（JSON 格式）：
+
+${JSON.stringify(summaryObj, null, 2)}
+
+**重要提示**: 当前章节是父文档的子章节，生成的内容应该与父文档内容相关联，可以深入展开父文档中的某个知识点，保持知识的连贯性和格式一致性。
+
+`
         
-        // 父文档大纲
-        if (summaryObj.outline && summaryObj.outline.length > 0) {
-          formattedSummary += `## 父文档大纲\n`
-          summaryObj.outline.forEach((item: any) => {
-            formattedSummary += `- **${item.title}**: ${item.summary}\n`
-            if (item.format) {
-              const formatDetails = []
-              if (item.format.hasCodeBlocks) formatDetails.push('代码示例')
-              if (item.format.hasLists) formatDetails.push('列表')
-              if (item.format.hasTables) formatDetails.push('表格')
-              if (formatDetails.length > 0) {
-                formattedSummary += `  格式: ${formatDetails.join('、')}\n`
-              }
-            }
-          })
-          formattedSummary += `\n`
-        }
-        
-        // 关键知识点
-        if (summaryObj.keyPoints && summaryObj.keyPoints.length > 0) {
-          formattedSummary += `## 父文档关键知识点\n`
-          summaryObj.keyPoints.forEach((point: string) => {
-            formattedSummary += `- ${point}\n`
-          })
-          formattedSummary += `\n`
-        }
-        
-        formattedSummary += `**重要提示**: 当前章节是父文档的子章节，生成的内容应该与父文档内容相关联，可以深入展开父文档中的某个知识点，保持知识的连贯性。\n\n`
-        
-        prompt = `${formattedSummary}${prompt}`
+        prompt = `${parentSummaryPrompt}${prompt}`
       } catch {
         // 如果不是 JSON，直接使用原始摘要
         prompt = `# 父文档摘要\n\n${parentDocSummary}\n\n**重要提示**: 当前章节是父文档的子章节，生成的内容应该与父文档内容相关联。\n\n${prompt}`
@@ -369,6 +346,7 @@ export async function POST(request: NextRequest) {
         ? contentData.summary 
         : JSON.stringify(contentData.summary)
 
+      // 保存 HTML 到数据库
       await db
         .update(knowledgeContents)
         .set({

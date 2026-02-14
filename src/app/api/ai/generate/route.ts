@@ -2,13 +2,15 @@ import { NextRequest, NextResponse } from "next/server"
 import { type AIClient, OpenAIClient } from '@/lib/ai/client'
 import { getAIConfig } from '@/lib/ai/get-ai-config'
 import { getCurrentUserId } from '@/lib/auth/get-user'
-import { performSearch, extractSearchQuery } from '@/lib/search/utils'
+import { performSearch } from '@/lib/search/utils'
 import { getSearchConfig } from '@/lib/search/get-search-config'
+import { generateAICommandPrompt } from '@/lib/ai/prompts'
 
 interface GenerateRequest {
   prompt: string
   context?: string
-  learningPlanTitle?: string
+  documentTitle?: string // 当前文档标题
+  planTopic?: string // 学习计划主题
   modelId?: string // 指定使用的模型ID
   enableWebSearch?: boolean // 是否启用联网搜索
 }
@@ -95,12 +97,13 @@ function markdownToHtml(markdown: string): string {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as GenerateRequest
-    const { prompt, context, learningPlanTitle, modelId, enableWebSearch = false } = body
+    const { prompt, context, documentTitle, planTopic, modelId, enableWebSearch = false } = body
 
     console.log('[API] AI generate request:', {
       hasPrompt: !!prompt,
       hasContext: !!context,
-      learningPlanTitle,
+      documentTitle,
+      planTopic,
       modelId,
       enableWebSearch,
     })
@@ -168,25 +171,24 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 构建完整的提示词，包含上下文和搜索结果
-    let fullPrompt = `
-你是一个专业的教育内容生成助手。
-
-学习计划标题: ${learningPlanTitle || "未指定"}
-
-当前编辑器内容: ${context || "无"}
-
-用户请求: ${prompt}
-
-请生成高质量的教育内容，符合以下要求：
-1. 内容应该清晰、结构化、易于理解
-2. 使用适当的标题、列表和格式
-3. 包含具体的例子和解释
-4. 内容应该与学习计划相关
-5. 使用 Markdown 格式
-
-请直接返回生成的内容，不需要额外的说明。
-    `.trim()
+    // 构建完整的提示词，包含文档摘要和搜索结果
+    let documentSummary = null
+    if (context) {
+      try {
+        documentSummary = JSON.parse(context)
+      } catch {
+        // 不是 JSON，作为普通文本处理
+      }
+    }
+    
+    // 使用统一的 prompt 函数
+    let fullPrompt = generateAICommandPrompt({
+      prompt,
+      context: documentSummary ? undefined : context,
+      documentTitle,
+      planTopic,
+      documentSummary,
+    })
     
     // 如果有搜索结果，添加到 prompt
     if (searchResults) {

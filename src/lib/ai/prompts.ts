@@ -25,13 +25,6 @@ export interface ContentInput {
   level?: 'beginner' | 'intermediate' | 'advanced' // 改为可选
 }
 
-export interface QuestionInput {
-  topic: string
-  content: string
-  difficulty: 'easy' | 'medium' | 'hard'
-  questionType: 'multiple_choice' | 'fill_blank' | 'coding' | 'essay'
-}
-
 export interface TestQuestionsInput {
   topic: string
   planTopic?: string // 学习计划主题
@@ -219,7 +212,7 @@ export function generateContentPrompt(input: ContentInput): string {
     ? `难度级别：${level === 'beginner' ? '初级' : level === 'intermediate' ? '中级' : '高级'}`
     : ''
 
-  return `你是一位专业的教育内容创作者。请为以下主题创建详细的学习内容：
+  return `你是一位专业的教育内容创作者,你精通各种领域的知识，请为以下主题创建详细的学习内容：
 
 主题：${topic}
 章节：${outlineItem}
@@ -417,52 +410,6 @@ JSON 格式如下：
 }
 
 /**
- * 生成测试题的提示词
- */
-export function generateQuestionPrompt(input: QuestionInput): string {
-  const { topic, content, difficulty, questionType } = input
-
-  const typeMap = {
-    multiple_choice: '选择题',
-    fill_blank: '填空题',
-    coding: '编程题',
-    essay: '简答题',
-  }
-
-  const difficultyMap = {
-    easy: '简单',
-    medium: '中等',
-    hard: '困难',
-  }
-
-  return `你是一位专业的教育评估专家。请基于以下内容生成测试题：
-
-主题：${topic}
-内容摘要：${content.slice(0, 500)}...
-题型：${typeMap[questionType]}
-难度：${difficultyMap[difficulty]}
-
-请生成 3-5 道高质量的测试题，要求：
-1. 题目清晰明确
-2. 考察核心知识点
-3. 难度适中
-4. 答案准确无误
-5. 包含详细解析
-
-请以 JSON 格式返回，格式如下：
-{
-  "questions": [
-    {
-      "question": "题目内容",
-      "options": ["选项A", "选项B", "选项C", "选项D"], // 仅选择题需要
-      "correctAnswer": "正确答案",
-      "explanation": "答案解析"
-    }
-  ]
-}`
-}
-
-/**
  * 生成费曼讲解分析的提示词
  */
 export function generateFeynmanAnalysisPrompt(topic: string, explanation: string): string {
@@ -490,6 +437,70 @@ ${explanation}
   "suggestions": ["改进建议1", "改进建议2"],
   "strengths": ["优点1", "优点2"]
 }`
+}
+
+/**
+ * 生成 /AI 指令的提示词
+ */
+export interface AIGenerateInput {
+  prompt: string
+  context?: string
+  documentTitle?: string // 当前文档标题
+  planTopic?: string // 学习计划主题
+  documentSummary?: any // 结构化的文档摘要（JSON）
+}
+
+export function generateAICommandPrompt(input: AIGenerateInput): string {
+  const { prompt, context, documentTitle, planTopic, documentSummary } = input
+  
+  if (documentSummary) {
+    // 使用结构化摘要
+    return `你是一个专业的教育内容生成助手。
+
+${planTopic ? `学习计划主题: ${planTopic}` : ''}
+当前文档标题: ${documentTitle || "未指定"}
+
+**【当前文档摘要】**
+以下是当前文档的结构化摘要（JSON 格式），包含文档主题、大纲和每个章节的格式信息：
+
+${JSON.stringify(documentSummary, null, 2)}
+
+**【重要说明】**
+- 上述摘要描述了当前文档的结构和格式风格
+- 每个章节的 format 字段记录了该章节使用的格式（标题层级、代码块、列表等）
+- 生成新内容时，请参考摘要中的格式信息，保持与现有内容的风格一致
+${planTopic ? `- 生成的内容应该与学习计划主题"${planTopic}"相关，确保内容的连贯性和关联性` : ''}
+
+用户请求: ${prompt}
+
+请生成高质量的教育内容，符合以下要求：
+1. 内容应该清晰、结构化、易于理解
+2. 参考文档摘要中的格式信息，保持格式风格一致
+3. 包含具体的例子和解释
+4. 内容应该与当前文档主题相关${planTopic ? `，并与学习计划主题"${planTopic}"保持关联` : ''}
+5. 使用 Markdown 格式
+
+请直接返回生成的内容，不需要额外的说明。`
+  } else {
+    // 使用普通文本上下文
+    return `你是一个专业的教育内容生成助手。
+
+${planTopic ? `学习计划主题: ${planTopic}` : ''}
+当前文档标题: ${documentTitle || "未指定"}
+
+当前编辑器内容: ${context || "无"}
+
+用户请求: ${prompt}
+
+请生成高质量的教育内容，符合以下要求：
+1. 内容应该清晰、结构化、易于理解
+2. 使用适当的标题、列表和其他符合内容的排版格式
+3. 有些内容可以包含具体的例子和解释
+4. 内容应该与当前文档相关${planTopic ? `，并与学习计划主题"${planTopic}"保持关联` : ''}
+5. 使用 Markdown 格式
+
+请直接返回生成的内容，不需要额外的说明。`
+  }
 }
 
 
@@ -531,9 +542,15 @@ export function generateTestQuestionsPrompt(input: TestQuestionsInput): string {
     contextInfo += `\n学习目标：${planGoal}`
   }
   if (currentContent) {
-    // 提取纯文本，限制长度
-    const plainText = currentContent.replace(/<[^>]*>/g, '').substring(0, 500)
-    contextInfo += `\n当前章节内容摘要：${plainText}`
+    // 尝试解析为 JSON 摘要
+    try {
+      const summary = JSON.parse(currentContent)
+      contextInfo += `\n当前文档摘要（JSON格式）：\n${JSON.stringify(summary, null, 2)}`
+    } catch {
+      // 如果不是 JSON，提取纯文本，限制长度
+      const plainText = currentContent.replace(/<[^>]*>/g, '').substring(0, 500)
+      contextInfo += `\n当前章节内容摘要：${plainText}`
+    }
   }
   if (additionalContext) {
     contextInfo += `\n补充说明：${additionalContext}`

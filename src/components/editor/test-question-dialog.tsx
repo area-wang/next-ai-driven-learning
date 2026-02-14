@@ -355,18 +355,32 @@ export function TestQuestionDialog({
                 <div className="flex gap-2">
                   <input
                     id="questionCount"
-                    type="number"
-                    min={questionTypes.length}
-                    max="50"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     value={questionCount}
                     onChange={(e) => {
-                      const val = parseInt(e.target.value)
-                      if (!isNaN(val) && val >= questionTypes.length && val <= 50) {
-                        setQuestionCount(val)
+                      const value = e.target.value
+                      // 只允许输入数字
+                      if (value === '' || /^\d+$/.test(value)) {
+                        const val = value === '' ? 0 : parseInt(value)
+                        if (val >= 0 && val <= 50) {
+                          setQuestionCount(val)
+                        }
+                      }
+                    }}
+                    onBlur={(e) => {
+                      // 失焦时验证并修正值
+                      const val = parseInt(e.target.value) || questionTypes.length
+                      if (val < questionTypes.length) {
+                        setQuestionCount(questionTypes.length)
+                      } else if (val > 50) {
+                        setQuestionCount(50)
                       }
                     }}
                     disabled={isGenerating}
                     className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500 text-sm"
+                    placeholder={`${questionTypes.length}-50`}
                   />
                   <span className="px-3 py-2 bg-gray-100 rounded-lg text-sm text-gray-600 flex items-center">
                     题
@@ -406,14 +420,18 @@ export function TestQuestionDialog({
                     <span className="text-sm text-gray-700 flex-1">{option.label}</span>
                     {!isRandomDistribution && questionTypes.includes(option.value) && (
                       <input
-                        type="number"
-                        min="0"
-                        max="50"
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
                         value={questionTypeConfig[option.value] || 0}
                         onChange={(e) => {
-                          const val = parseInt(e.target.value)
-                          if (!isNaN(val)) {
-                            updateTypeCount(option.value, val)
+                          const value = e.target.value
+                          // 只允许输入数字
+                          if (value === '' || /^\d+$/.test(value)) {
+                            const val = value === '' ? 0 : parseInt(value)
+                            if (val >= 0 && val <= 50) {
+                              updateTypeCount(option.value, val)
+                            }
                           }
                         }}
                         onClick={(e) => e.stopPropagation()}
@@ -484,14 +502,18 @@ export function TestQuestionDialog({
                         <span className="text-sm text-teal-700 flex-1">{type}</span>
                         {!isRandomDistribution && questionTypes.includes(type) && (
                           <input
-                            type="number"
-                            min="0"
-                            max="50"
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
                             value={questionTypeConfig[type] || 0}
                             onChange={(e) => {
-                              const val = parseInt(e.target.value)
-                              if (!isNaN(val)) {
-                                updateTypeCount(type, val)
+                              const value = e.target.value
+                              // 只允许输入数字
+                              if (value === '' || /^\d+$/.test(value)) {
+                                const val = value === '' ? 0 : parseInt(value)
+                                if (val >= 0 && val <= 50) {
+                                  updateTypeCount(type, val)
+                                }
                               }
                             }}
                             disabled={isGenerating}
