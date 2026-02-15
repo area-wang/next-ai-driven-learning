@@ -105,20 +105,53 @@ export async function POST(request: NextRequest) {
     const configMode = user[0]?.configMode || 'openrouter'
     console.log('[User Models POST] 用户配置模式:', configMode)
 
-    // 删除用户当前配置模式下的所有模型配置
-    try {
-      await db
-        .delete(aiModels)
-        .where(
-          and(
-            eq(aiModels.userId, userId),
-            eq(aiModels.configMode, configMode)
-          )
-        )
-      console.log('[User Models POST] 已删除旧模型配置')
-    } catch (deleteError) {
-      console.error('[User Models POST] 删除旧模型配置失败:', deleteError)
-      // 继续执行,可能是因为没有旧数据
+    // 提取当前要保存的厂商列表（从模型 ID 中提取）
+    const currentProviders = new Set<string>()
+    modelList.forEach(model => {
+      // 模型 ID 格式：provider/modelId
+      const provider = model.id.split('/')[0]
+      if (provider) {
+        currentProviders.add(provider)
+      }
+    })
+    console.log('[User Models POST] 当前保存的厂商:', Array.from(currentProviders))
+
+    // 只删除当前要保存的厂商的模型配置（叠加模式）
+    // 这样可以保留其他厂商的模型配置
+    if (currentProviders.size > 0) {
+      for (const provider of currentProviders) {
+        try {
+          // 删除该厂商的旧模型配置
+          // 通过 modelId 的前缀匹配来识别厂商
+          const existingModels = await db
+            .select()
+            .from(aiModels)
+            .where(
+              and(
+                eq(aiModels.userId, userId),
+                eq(aiModels.configMode, configMode)
+              )
+            )
+          
+          // 过滤出属于当前厂商的模型
+          const providerModelIds = existingModels
+            .filter(m => m.modelId.startsWith(`${provider}/`))
+            .map(m => m.id)
+          
+          if (providerModelIds.length > 0) {
+            // 逐个删除（避免 IN 查询的限制）
+            for (const id of providerModelIds) {
+              await db
+                .delete(aiModels)
+                .where(eq(aiModels.id, id))
+            }
+            console.log('[User Models POST] 已删除厂商 %s 的 %d 个旧模型', provider, providerModelIds.length)
+          }
+        } catch (deleteError) {
+          console.error('[User Models POST] 删除厂商 %s 的旧模型配置失败:', provider, deleteError)
+          // 继续执行,可能是因为没有旧数据
+        }
+      }
     }
 
     // 准备新的模型配置

@@ -185,9 +185,9 @@ const PROVIDER_API_CONFIG: Record<string, {
     parseResponse: (data: any) => {
       if (!data.data || !Array.isArray(data.data)) return []
       return data.data.map((model: any) => ({
-        id: model.model,
-        name: model.name || model.model,
-        contextLength: model.context_length || 32000,
+        id: model.id, // 字节跳动返回的是 id 字段
+        name: model.name || model.id,
+        contextLength: model.token_limits?.context_window || 32000,
       }))
     },
   },

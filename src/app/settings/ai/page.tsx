@@ -184,7 +184,20 @@ export default function AISettingsPage() {
       const response = await fetch('/api/ai/providers')
       const result = await response.json() as { success: boolean; data?: ProviderConfig[] }
       if (result.success) {
-        setProviderConfigs(result.data || [])
+        const configs = result.data || []
+        setProviderConfigs(configs)
+        
+        // 自动刷新已配置厂商的模型列表
+        if (configs.length > 0) {
+          console.log('[AI Settings] 检测到已配置的厂商，自动刷新模型列表')
+          for (const config of configs) {
+            if (config.apiKey && config.provider) {
+              console.log('[AI Settings] 自动刷新厂商模型列表:', config.provider)
+              // 使用脱敏的 API Key 刷新模型列表
+              await fetchProviderModelsList(config.provider, config.apiKey, config.baseUrl)
+            }
+          }
+        }
       }
     } catch (error) {
       console.error('加载厂商配置失败:', error)
@@ -334,6 +347,60 @@ export default function AISettingsPage() {
 
     console.log('[AI Settings] 开始保存厂商配置:', provider)
 
+    // 如果 API Key 是脱敏的，说明是从数据库加载的，不需要重新测试和保存
+    const isApiKeyMasked = config.apiKey.includes('*')
+    
+    if (isApiKeyMasked) {
+      // API Key 未修改，只更新选中的模型
+      console.log('[AI Settings] API Key 未修改，只更新模型列表')
+      
+      if (!config.selectedModels || config.selectedModels.length === 0) {
+        toast.warning('请至少选择一个模型')
+        return
+      }
+
+      setSavingProvider(provider)
+      try {
+        const providerInfo = SUPPORTED_PROVIDERS.find(p => p.id === provider)
+        const currentProviderModels: Array<{ id: string; name: string; provider: string }> = []
+        
+        for (const modelId of config.selectedModels) {
+          const model = providerModelsCache[provider]?.find(m => m.id === modelId)
+          const fullModelId = modelId.includes('/') ? modelId : `${provider}/${modelId}`
+          currentProviderModels.push({
+            id: fullModelId,
+            name: model?.name || modelId,
+            provider: providerInfo?.name || provider,
+          })
+        }
+
+        const modelsResponse = await fetch('/api/ai/user-models', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            models: currentProviderModels,
+            defaultModelId: currentProviderModels[0]?.id,
+          }),
+        })
+
+        const modelsResult = await modelsResponse.json() as { success: boolean; error?: string }
+        if (modelsResult.success) {
+          toast.success(`已更新 ${provider} 的模型列表，共 ${currentProviderModels.length} 个模型`)
+        } else {
+          toast.error(`更新模型列表失败: ${modelsResult.error}`)
+        }
+      } catch (error) {
+        console.error('[AI Settings] 更新模型列表失败:', error)
+        toast.error('更新失败')
+      } finally {
+        setSavingProvider(null)
+      }
+      return
+    }
+
+    // API Key 是新输入的，需要测试连接并保存配置
     setSavingProvider(provider)
     try {
       // 1. 先测试连通性
@@ -516,12 +583,17 @@ export default function AISettingsPage() {
       return
     }
 
-    setLoadingProviderModels({ ...loadingProviderModels, [provider]: true })
+    setLoadingProviderModels(prev => ({ ...prev, [provider]: true }))
     try {
-      const params = new URLSearchParams({
-        provider,
-        apiKey,
-      })
+      const params = new URLSearchParams({ provider })
+      
+      // 如果 API Key 是脱敏的，使用特殊标记让后端自动获取真实的 Key
+      if (apiKey.includes('*')) {
+        params.append('useSavedKey', 'true')
+      } else {
+        params.append('apiKey', apiKey)
+      }
+      
       if (baseUrl) {
         params.append('baseUrl', baseUrl)
       }
@@ -534,19 +606,19 @@ export default function AISettingsPage() {
       }
 
       if (result.success && result.data) {
-        setProviderModelsCache({
-          ...providerModelsCache,
-          [provider]: result.data.models,
-        })
-        toast.success(`成功获取 ${result.data.models.length} 个模型`)
+        setProviderModelsCache(prev => ({
+          ...prev,
+          [provider]: result.data!.models,
+        }))
+        toast.success(`${provider}: 成功获取 ${result.data.models.length} 个模型`)
       } else {
-        toast.error(result.error || '获取模型列表失败')
+        toast.error(`${provider}: ${result.error || '获取模型列表失败'}`)
       }
     } catch (error) {
       console.error('获取模型列表失败:', error)
-      toast.error('获取模型列表失败')
+      toast.error(`${provider}: 获取模型列表失败`)
     } finally {
-      setLoadingProviderModels({ ...loadingProviderModels, [provider]: false })
+      setLoadingProviderModels(prev => ({ ...prev, [provider]: false }))
     }
   }
 
@@ -1091,13 +1163,17 @@ export default function AISettingsPage() {
                       {providerModelsCache[config.provider] && providerModelsCache[config.provider].length > 0 ? (
                         providerModelsCache[config.provider].map((model) => {
                           const isSelected = (config.selectedModels || []).includes(model.id)
+                          const checkboxId = `provider-${config.provider}-model-${model.id}`
+                          
                           return (
                             <label
                               key={model.id}
+                              htmlFor={checkboxId}
                               className="flex items-center gap-2 cursor-pointer hover:bg-white/80 p-2 rounded transition-colors"
                             >
                               <input
                                 type="checkbox"
+                                id={checkboxId}
                                 checked={isSelected}
                                 onChange={() => toggleProviderModel(config.provider, model.id)}
                                 className="w-4 h-4 text-[var(--color-primary)] border-[var(--color-border-light)] rounded focus:ring-[var(--color-primary)] cursor-pointer"

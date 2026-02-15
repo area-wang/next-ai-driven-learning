@@ -96,16 +96,44 @@ export function ConfiguredModelSelector({
   // 计算下拉框位置
   useEffect(() => {
     if (isOpen && buttonRef.current) {
-      const buttonRect = buttonRef.current.getBoundingClientRect()
-      const dropdownHeight = Math.min(models.length * 60, 240) // 每项约60px，最大240px
-      const spaceBelow = window.innerHeight - buttonRect.bottom
-      const spaceAbove = buttonRect.top
+      const updatePosition = () => {
+        if (!buttonRef.current) return
+        
+        const buttonRect = buttonRef.current.getBoundingClientRect()
+        const dropdownHeight = Math.min(models.length * 60, 240) // 每项约60px，最大240px
+        const spaceBelow = window.innerHeight - buttonRect.bottom
+        const spaceAbove = buttonRect.top
 
-      // 如果下方空间不足且上方空间更大，则向上展开
-      if (spaceBelow < dropdownHeight && spaceAbove > spaceBelow) {
-        setDropdownPosition('top')
-      } else {
-        setDropdownPosition('bottom')
+        console.log('[Dropdown Position Debug]', {
+          buttonRect: {
+            left: buttonRect.left,
+            top: buttonRect.top,
+            bottom: buttonRect.bottom,
+            width: buttonRect.width,
+            height: buttonRect.height,
+          },
+          windowHeight: window.innerHeight,
+          spaceBelow,
+          spaceAbove,
+        })
+
+        // 如果下方空间不足且上方空间更大，则向上展开
+        if (spaceBelow < dropdownHeight && spaceAbove > spaceBelow) {
+          setDropdownPosition('top')
+        } else {
+          setDropdownPosition('bottom')
+        }
+      }
+
+      updatePosition()
+
+      // 监听滚动和窗口大小变化
+      window.addEventListener('scroll', updatePosition, true) // 使用捕获阶段监听所有滚动
+      window.addEventListener('resize', updatePosition)
+
+      return () => {
+        window.removeEventListener('scroll', updatePosition, true)
+        window.removeEventListener('resize', updatePosition)
       }
     }
   }, [isOpen, models.length])
@@ -175,15 +203,9 @@ export function ConfiguredModelSelector({
               onClick={() => setIsOpen(false)}
             />
             <div 
-              className={`fixed bg-white/95 backdrop-blur-md border border-[var(--color-border-light)] rounded-lg shadow-lg z-[60] max-h-60 overflow-y-auto`}
-              style={{
-                left: buttonRef.current?.getBoundingClientRect().left,
-                width: buttonRef.current?.getBoundingClientRect().width,
-                ...(dropdownPosition === 'top' 
-                  ? { bottom: window.innerHeight - (buttonRef.current?.getBoundingClientRect().top || 0) + 4 }
-                  : { top: (buttonRef.current?.getBoundingClientRect().bottom || 0) + 4 }
-                )
-              }}
+              className={`absolute left-0 right-0 bg-white/95 backdrop-blur-md border border-[var(--color-border-light)] rounded-lg shadow-lg z-[60] max-h-60 overflow-y-auto ${
+                dropdownPosition === 'top' ? 'bottom-full mb-1' : 'top-full mt-1'
+              }`}
             >
               {models.map((model) => (
                 <button
