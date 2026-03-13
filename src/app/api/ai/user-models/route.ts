@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getDbClient } from '@/lib/db-connection'
-import { aiModels, users } from '@/db/schema'
+import { aiModels } from '@/db/schema'
 import { eq, and } from 'drizzle-orm'
 import { getCurrentUserId } from '@/lib/auth/get-user'
 
@@ -13,7 +13,6 @@ import { getCurrentUserId } from '@/lib/auth/get-user'
 
 /**
  * GET - 获取用户的所有模型配置
- * 根据用户当前的配置模式,只返回对应模式的模型
  */
 export async function GET(request: NextRequest) {
   try {
@@ -27,25 +26,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: '数据库连接失败' }, { status: 500 })
     }
 
-    // 获取用户的配置模式
-    const user = await db
-      .select({ configMode: users.configMode })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1)
-
-    const configMode = user[0]?.configMode || 'openrouter'
-
-    // 只返回当前配置模式的模型
+    // 返回用户的所有模型
     const models = await db
       .select()
       .from(aiModels)
-      .where(
-        and(
-          eq(aiModels.userId, userId),
-          eq(aiModels.configMode, configMode)
-        )
-      )
+      .where(eq(aiModels.userId, userId))
 
     return NextResponse.json({
       success: true,
@@ -62,7 +47,6 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST - 批量保存用户的模型配置
- * 保存时会标记当前配置模式,以便后续读取
  */
 export async function POST(request: NextRequest) {
   try {
@@ -77,10 +61,10 @@ export async function POST(request: NextRequest) {
     }
     const { models: modelList, defaultModelId } = body
 
-    console.log('[User Models POST] 接收到的数据:', { 
-      modelCount: modelList?.length, 
-      defaultModelId, 
-      userId 
+    console.log('[User Models POST] 接收到的数据:', {
+      modelCount: modelList?.length,
+      defaultModelId,
+      userId
     })
 
     if (!Array.isArray(modelList) || modelList.length === 0) {
@@ -94,16 +78,6 @@ export async function POST(request: NextRequest) {
     if (!db) {
       return NextResponse.json({ error: '数据库连接失败' }, { status: 500 })
     }
-
-    // 获取用户的配置模式
-    const user = await db
-      .select({ configMode: users.configMode })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1)
-
-    const configMode = user[0]?.configMode || 'openrouter'
-    console.log('[User Models POST] 用户配置模式:', configMode)
 
     // 提取当前要保存的厂商列表（从模型 ID 中提取）
     const currentProviders = new Set<string>()
@@ -126,18 +100,13 @@ export async function POST(request: NextRequest) {
           const existingModels = await db
             .select()
             .from(aiModels)
-            .where(
-              and(
-                eq(aiModels.userId, userId),
-                eq(aiModels.configMode, configMode)
-              )
-            )
-          
+            .where(eq(aiModels.userId, userId))
+
           // 过滤出属于当前厂商的模型
           const providerModelIds = existingModels
             .filter(m => m.modelId.startsWith(`${provider}/`))
             .map(m => m.id)
-          
+
           if (providerModelIds.length > 0) {
             // 逐个删除（避免 IN 查询的限制）
             for (const id of providerModelIds) {
@@ -161,7 +130,6 @@ export async function POST(request: NextRequest) {
       modelId: model.id,
       modelName: model.name,
       provider: model.provider,
-      configMode: configMode,
       isSelected: true,
       isDefault: model.id === defaultModelId,
       createdAt: new Date(),
@@ -169,13 +137,13 @@ export async function POST(request: NextRequest) {
     }))
 
     // SQLite 限制：最多 999 个绑定变量
-    // 每个模型有 10 个字段，所以每批最多插入 99 个模型
+    // 每个模型有 9 个字段，每批最多插入约 110 个模型
     // 为了安全起见，我们每批插入 50 个
     const BATCH_SIZE = 50
     const totalBatches = Math.ceil(newModels.length / BATCH_SIZE)
 
-    console.log('[User Models POST] 准备插入 %d 个模型，分 %d 批', 
-      newModels.length, 
+    console.log('[User Models POST] 准备插入 %d 个模型，分 %d 批',
+      newModels.length,
       totalBatches
     )
 
@@ -183,10 +151,10 @@ export async function POST(request: NextRequest) {
     for (let i = 0; i < newModels.length; i += BATCH_SIZE) {
       const batch = newModels.slice(i, i + BATCH_SIZE)
       const batchNumber = Math.floor(i / BATCH_SIZE) + 1
-      
+
       try {
         await db.insert(aiModels).values(batch)
-        console.log('[User Models POST] 批次 %d/%d 插入成功 (%d 个模型)', 
+        console.log('[User Models POST] 批次 %d/%d 插入成功 (%d 个模型)',
           batchNumber,
           totalBatches,
           batch.length
@@ -242,15 +210,6 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: '数据库连接失败' }, { status: 500 })
     }
 
-    // 获取用户的配置模式
-    const user = await db
-      .select({ configMode: users.configMode })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1)
-
-    const configMode = user[0]?.configMode || 'openrouter'
-
     // 检查模型是否已存在
     const existing = await db
       .select()
@@ -258,8 +217,7 @@ export async function PUT(request: NextRequest) {
       .where(
         and(
           eq(aiModels.userId, userId),
-          eq(aiModels.modelId, modelId),
-          eq(aiModels.configMode, configMode)
+          eq(aiModels.modelId, modelId)
         )
       )
       .limit(1)
@@ -276,12 +234,7 @@ export async function PUT(request: NextRequest) {
       await db
         .update(aiModels)
         .set({ isDefault: false, updatedAt: new Date() })
-        .where(
-          and(
-            eq(aiModels.userId, userId),
-            eq(aiModels.configMode, configMode)
-          )
-        )
+        .where(eq(aiModels.userId, userId))
     }
 
     // 插入新模型
@@ -291,7 +244,6 @@ export async function PUT(request: NextRequest) {
       modelId: modelId,
       modelName: modelName,
       provider: provider,
-      configMode: configMode,
       isSelected: true,
       isDefault: setAsDefault || false,
       createdAt: new Date(),
@@ -368,7 +320,7 @@ export async function PATCH(request: NextRequest) {
 /**
  * DELETE - 删除模型配置
  * 如果提供 modelId 参数,删除指定模型
- * 如果不提供 modelId 参数,删除用户当前配置模式下的所有模型配置
+ * 如果不提供 modelId 参数,删除用户的所有模型配置
  */
 export async function DELETE(request: NextRequest) {
   try {
@@ -396,24 +348,10 @@ export async function DELETE(request: NextRequest) {
           )
         )
     } else {
-      // 获取用户的配置模式
-      const user = await db
-        .select({ configMode: users.configMode })
-        .from(users)
-        .where(eq(users.id, userId))
-        .limit(1)
-
-      const configMode = user[0]?.configMode || 'openrouter'
-
-      // 删除用户当前配置模式下的所有模型配置
+      // 删除用户的所有模型配置
       await db
         .delete(aiModels)
-        .where(
-          and(
-            eq(aiModels.userId, userId),
-            eq(aiModels.configMode, configMode)
-          )
-        )
+        .where(eq(aiModels.userId, userId))
     }
 
     return NextResponse.json({

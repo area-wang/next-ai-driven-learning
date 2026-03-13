@@ -3,8 +3,8 @@ import { getDbClient } from '@/lib/db-connection'
 import { feynmanExplanations } from '@/db/schema'
 import { eq, and, desc } from 'drizzle-orm'
 import { getUserIdOrDemo } from '@/lib/auth/get-user'
-import { getAIConfig } from '@/lib/ai/get-ai-config'
-import { OpenAIClient } from '@/lib/ai/client'
+import { getAIConfig, createAIClientFromConfig } from '@/lib/ai/get-ai-config'
+import { type AIClient } from '@/lib/ai/client'
 
 /**
  * GET /api/feynman/explanations - 获取费曼解释列表
@@ -161,7 +161,7 @@ async function generateAIFeedback(request: NextRequest, userId: string, concept:
   try {
     // 获取 AI 配置
     const config = await getAIConfig(request as unknown as Request, userId)
-    const aiClient = new OpenAIClient(config.apiKey, config.model, config.baseUrl)
+    const aiClient = createAIClientFromConfig(config)
 
     const prompt = `作为一位教育专家，请评估以下费曼学习法解释：
 
@@ -185,7 +185,6 @@ async function generateAIFeedback(request: NextRequest, userId: string, concept:
     const response = await aiClient.chat({
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.7,
-      maxTokens: 100000,
     })
 
     // 尝试解析 JSON

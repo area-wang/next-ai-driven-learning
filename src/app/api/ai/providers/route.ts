@@ -9,6 +9,7 @@ import { aiProviders } from '@/db/schema'
 import { eq, and } from 'drizzle-orm'
 import { getCurrentUserId } from '@/lib/auth/get-user'
 import { decodeApiKey, isBase64Encoded } from '@/lib/crypto'
+import { AI_PROVIDERS } from '@/lib/ai/static-provider-models'
 
 // export const runtime = 'edge'
 
@@ -44,12 +45,29 @@ export async function GET(request: NextRequest) {
       .from(aiProviders)
       .where(eq(aiProviders.userId, userId))
 
-    // 解析 selectedModels JSON 字符串，并脱敏 API Key
+    // 解析 JSON 字符串，并脱敏 API Key
     const providersWithParsedModels = providers.map(p => ({
       ...p,
       apiKey: maskApiKey(p.apiKey), // 脱敏 API Key
       selectedModels: p.selectedModels ? JSON.parse(p.selectedModels) as string[] : [],
+      customModels: p.customModels ? JSON.parse(p.customModels) as Array<{ id: string; name: string }> : undefined,
     }))
+
+    // 按 AI_PROVIDERS 的顺序排序
+    const providerOrder = AI_PROVIDERS.map(p => p.id)
+    providersWithParsedModels.sort((a, b) => {
+      const aIndex = providerOrder.indexOf(a.provider)
+      const bIndex = providerOrder.indexOf(b.provider)
+      // 如果两个厂商都在 AI_PROVIDERS 中，按列表顺序排序
+      if (aIndex !== -1 && bIndex !== -1) {
+        return aIndex - bIndex
+      }
+      // 如果只有其中一个在列表中，排在前面
+      if (aIndex !== -1) return -1
+      if (bIndex !== -1) return 1
+      // 都不在列表中，按字母顺序
+      return a.provider.localeCompare(b.provider)
+    })
 
     return NextResponse.json({
       success: true,
@@ -84,6 +102,9 @@ export async function POST(request: NextRequest) {
       baseUrl?: string
       isEnabled?: boolean
       selectedModels?: string[]
+      customModels?: Array<{ id: string; name: string }>
+      customProviderName?: string
+      messageFormat?: 'openai' | 'anthropic'
     }
     console.log('[Providers API] 请求体:', {
       provider: body.provider,
@@ -92,9 +113,12 @@ export async function POST(request: NextRequest) {
       baseUrl: body.baseUrl,
       isEnabled: body.isEnabled,
       selectedModelsCount: body.selectedModels?.length || 0,
+      customModelsCount: body.customModels?.length || 0,
+      customProviderName: body.customProviderName,
+      messageFormat: body.messageFormat,
     })
     
-    const { provider, baseUrl, isEnabled, selectedModels } = body
+    const { provider, baseUrl, isEnabled, selectedModels, customModels, customProviderName, messageFormat } = body
     let { apiKey } = body
 
     if (!provider) {
@@ -108,6 +132,12 @@ export async function POST(request: NextRequest) {
     if (apiKey && isBase64Encoded(apiKey)) {
       console.log('[Providers API] 检测到 Base64 编码的 API Key，正在解码')
       apiKey = decodeApiKey(apiKey)
+    }
+    
+    // 如果 API Key 是脱敏的（包含 *），说明用户没有修改，保留数据库中的原值
+    const isApiKeyMasked = apiKey?.includes('*')
+    if (isApiKeyMasked) {
+      console.log('[Providers API] 检测到脱敏的 API Key，将保留数据库中的原值')
     }
 
     const db = getDbClient(request as unknown as Request)
@@ -136,13 +166,19 @@ export async function POST(request: NextRequest) {
       // 更新现有配置
       console.log('[Providers API] 更新现有配置, ID:', existing[0].id)
       
+      // 如果 API Key 是脱敏的，保留数据库中的原值
+      const finalApiKey = isApiKeyMasked ? existing[0].apiKey : (apiKey || null)
+      
       await db
         .update(aiProviders)
         .set({
-          apiKey: apiKey || null,
+          apiKey: finalApiKey,
           baseUrl: baseUrl || null,
           isEnabled: isEnabled ?? false,
           selectedModels: selectedModels ? JSON.stringify(selectedModels) : null,
+          customModels: customModels ? JSON.stringify(customModels) : null,
+          customProviderName: customProviderName || null,
+          messageFormat: messageFormat || 'openai',
           updatedAt: new Date(),
         })
         .where(eq(aiProviders.id, existing[0].id))
@@ -151,7 +187,7 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        data: { ...existing[0], apiKey, baseUrl, isEnabled, selectedModels },
+        data: { ...existing[0], apiKey: finalApiKey, baseUrl, isEnabled, selectedModels, customModels, customProviderName, messageFormat },
       })
     } else {
       // 创建新配置
@@ -165,6 +201,9 @@ export async function POST(request: NextRequest) {
         baseUrl: baseUrl || null,
         isEnabled: isEnabled ?? false,
         selectedModels: selectedModels ? JSON.stringify(selectedModels) : null,
+        customModels: customModels ? JSON.stringify(customModels) : null,
+        customProviderName: customProviderName || null,
+        messageFormat: messageFormat || 'openai',
         createdAt: new Date(),
         updatedAt: new Date(),
       }

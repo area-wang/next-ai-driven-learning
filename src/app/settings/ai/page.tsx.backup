@@ -21,7 +21,14 @@ interface AvailableModel {
 
 interface ModelsResponse {
   success: boolean
-  data: AvailableModel[]
+  data: {
+    models: AvailableModel[]
+    total: number
+    providers: Array<{
+      name: string
+      count: number
+    }>
+  }
   error?: string
 }
 
@@ -39,7 +46,6 @@ interface ProviderConfig {
 
 // 支持的厂商列表
 const SUPPORTED_PROVIDERS = [
-  { id: 'openrouter', name: 'OpenRouter', defaultBaseUrl: 'https://openrouter.ai/api/v1' },
   { id: 'openai', name: 'OpenAI', defaultBaseUrl: 'https://api.openai.com/v1' },
   { id: 'google', name: 'Google (Gemini)', defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1' },
   { id: 'deepseek', name: 'DeepSeek', defaultBaseUrl: 'https://api.deepseek.com/v1' },
@@ -67,7 +73,18 @@ function maskApiKey(apiKey: string): string {
 
 export default function AISettingsPage() {
   const toast = useToast()
-
+  
+  // 配置模式
+  const [configMode, setConfigMode] = useState<'openrouter' | 'independent'>('openrouter')
+  const [loadingConfigMode, setLoadingConfigMode] = useState(true)
+  const [savingConfigMode, setSavingConfigMode] = useState(false)
+  
+  // OpenRouter 统一配置
+  const [openrouterApiKey, setOpenrouterApiKey] = useState('')
+  const [openrouterApiKeyMasked, setOpenrouterApiKeyMasked] = useState('') // 脱敏后的 API Key
+  const [testingOpenrouter, setTestingOpenrouter] = useState(false)
+  const [openrouterTestResult, setOpenrouterTestResult] = useState<{ success: boolean; error?: string } | null>(null)
+  
   // 各厂商独立配置
   const [providerConfigs, setProviderConfigs] = useState<ProviderConfig[]>([])
   const [loadingProviders, setLoadingProviders] = useState(false)
@@ -75,11 +92,11 @@ export default function AISettingsPage() {
   const [selectedProviderToAdd, setSelectedProviderToAdd] = useState<string>('')
   const [loadingProviderModels, setLoadingProviderModels] = useState<Record<string, boolean>>({})
   const [providerModelsCache, setProviderModelsCache] = useState<Record<string, ProviderModel[]>>({})
-
+  
   // "其他"厂商的自定义模型输入状态
   const [customModelInput, setCustomModelInput] = useState<Record<string, { id: string; name: string }>>({})
   const [addingCustomModel, setAddingCustomModel] = useState<string | null>(null)
-
+  
   // 模型列表
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([])
   const [loadingModels, setLoadingModels] = useState(false)
@@ -87,6 +104,11 @@ export default function AISettingsPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set())
   const [defaultModelId, setDefaultModelId] = useState<string | undefined>(undefined)
+
+  // 加载配置模式
+  useEffect(() => {
+    loadConfigMode()
+  }, [])
 
   // 加载厂商配置
   useEffect(() => {
@@ -101,7 +123,68 @@ export default function AISettingsPage() {
   // 加载可用模型列表
   useEffect(() => {
     loadAvailableModels()
-  }, [])
+  }, [configMode]) // 当配置模式改变时重新加载模型列表
+
+  const loadConfigMode = async () => {
+    setLoadingConfigMode(true)
+    try {
+      const response = await fetch('/api/ai/config-mode')
+      const result = await response.json() as { success: boolean; data?: { configMode: 'openrouter' | 'independent' } }
+      if (result.success && result.data) {
+        setConfigMode(result.data.configMode)
+      }
+      
+      // 加载 OpenRouter API Key（从数据库）
+      if (result.data?.configMode === 'openrouter') {
+        const providersResponse = await fetch('/api/ai/providers')
+        const providersResult = await providersResponse.json() as {
+          success: boolean
+          data?: ProviderConfig[]
+        }
+        if (providersResult.success && providersResult.data) {
+          const openrouterConfig = providersResult.data.find(p => p.provider === 'openrouter')
+          if (openrouterConfig?.apiKey) {
+            setOpenrouterApiKeyMasked(openrouterConfig.apiKey) // 已经是脱敏后的值
+          }
+        }
+      }
+    } catch (error) {
+      console.error('加载配置模式失败:', error)
+    } finally {
+      setLoadingConfigMode(false)
+    }
+  }
+
+  const saveConfigMode = async (mode: 'openrouter' | 'independent') => {
+    setSavingConfigMode(true)
+    try {
+      const response = await fetch('/api/ai/config-mode', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ configMode: mode }),
+      })
+      const result = await response.json() as { success: boolean; error?: string }
+      if (result.success) {
+        setConfigMode(mode)
+        toast.success('配置模式已更新')
+        
+        // 重新加载模型列表(根据新的配置模式)
+        await loadAvailableModels()
+        
+        // 重新加载用户已选择的模型
+        await loadUserModels()
+      } else {
+        toast.error(result.error || '保存失败')
+      }
+    } catch (error) {
+      console.error('保存配置模式失败:', error)
+      toast.error('保存失败')
+    } finally {
+      setSavingConfigMode(false)
+    }
+  }
 
   const loadProviderConfigs = async () => {
     setLoadingProviders(true)
@@ -110,19 +193,20 @@ export default function AISettingsPage() {
       const result = await response.json() as { success: boolean; data?: ProviderConfig[] }
       if (result.success) {
         const configs = result.data || []
-        // 现在包含所有厂商（包括 OpenRouter）
-        setProviderConfigs(configs)
-
+        // 过滤掉 openrouter，它只在 OpenRouter 统一配置模式中显示
+        const filteredConfigs = configs.filter(c => c.provider !== 'openrouter')
+        setProviderConfigs(filteredConfigs)
+        
         // 自动刷新已配置厂商的模型列表（跳过"其他"厂商）
-        if (configs.length > 0) {
+        if (filteredConfigs.length > 0) {
           console.log('[AI Settings] 检测到已配置的厂商，自动刷新模型列表')
-          for (const config of configs) {
+          for (const config of filteredConfigs) {
             // "其他"厂商不需要自动刷新，它使用自定义模型列表
             if (config.provider.startsWith('other-')) {
               console.log('[AI Settings] 跳过"其他"厂商:', config.provider)
               continue
             }
-
+            
             if (config.apiKey && config.provider) {
               console.log('[AI Settings] 自动刷新厂商模型列表:', config.provider)
               // 使用脱敏的 API Key 刷新模型列表
@@ -161,10 +245,10 @@ export default function AISettingsPage() {
   const loadAvailableModels = async () => {
     setLoadingModels(true)
     try {
-      const response = await fetch(`/api/ai/models`)
+      const response = await fetch(`/api/ai/models?configMode=${configMode}`)
       const result: ModelsResponse = await response.json()
       if (result.success && result.data) {
-        setAvailableModels(result.data)
+        setAvailableModels(result.data.models)
       }
     } catch (error) {
       console.error('加载模型列表失败:', error)
@@ -180,6 +264,94 @@ export default function AISettingsPage() {
   const filteredAvailableModels = availableModels
     .filter(m => selectedProvider === 'all' || m.provider === selectedProvider)
     .filter(m => searchQuery === '' || m.name.toLowerCase().includes(searchQuery.toLowerCase()))
+
+  // 测试 OpenRouter 连接
+  const handleTestOpenrouter = async () => {
+    if (!openrouterApiKey && !openrouterApiKeyMasked) {
+      toast.warning('请先输入 OpenRouter API Key')
+      return
+    }
+
+    setTestingOpenrouter(true)
+    setOpenrouterTestResult(null)
+
+    try {
+      const response = await fetch('/api/ai/test-connection', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          provider: 'custom',
+          apiKey: openrouterApiKey || openrouterApiKeyMasked,
+          baseUrl: 'https://openrouter.ai/api/v1',
+          model: 'deepseek/deepseek-chat',
+        }),
+      })
+
+      const data = await response.json() as { success?: boolean; error?: string }
+
+      if (response.ok && data.success) {
+        setOpenrouterTestResult({ success: true })
+        toast.success('OpenRouter 连接成功')
+      } else {
+        setOpenrouterTestResult({ success: false, error: data.error || '连接失败' })
+        toast.error(data.error || 'OpenRouter 连接失败')
+      }
+    } catch (error) {
+      setOpenrouterTestResult({
+        success: false,
+        error: error instanceof Error ? error.message : '网络错误',
+      })
+      toast.error('网络错误')
+    } finally {
+      setTestingOpenrouter(false)
+    }
+  }
+
+  // 保存 OpenRouter API Key
+  const handleSaveOpenrouterKey = async () => {
+    if (!openrouterApiKey) {
+      toast.warning('请先输入 OpenRouter API Key')
+      return
+    }
+
+    setSavingConfigMode(true)
+    try {
+      // 编码 API Key
+      const encodedApiKey = encodeApiKey(openrouterApiKey)
+      
+      const response = await fetch('/api/ai/providers', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          provider: 'openrouter',
+          apiKey: encodedApiKey,
+          baseUrl: 'https://openrouter.ai/api/v1',
+          isEnabled: true,
+        }),
+      })
+
+      const result = await response.json() as { success: boolean; error?: string }
+      if (result.success) {
+        toast.success('OpenRouter API Key 已保存')
+        setOpenrouterApiKey('') // 清空输入
+        setOpenrouterApiKeyMasked(maskApiKey(openrouterApiKey)) // 显示脱敏后的值
+        
+        // 重新加载模型列表
+        await loadAvailableModels()
+      } else {
+        toast.error(result.error || '保存失败')
+      }
+    } catch (error) {
+      console.error('保存 OpenRouter API Key 失败:', error)
+      toast.error('保存失败')
+    } finally {
+      setSavingConfigMode(false)
+    }
+  }
 
   // 保存厂商配置
   const handleSaveProviderConfig = async (provider: string) => {
@@ -374,14 +546,6 @@ export default function AISettingsPage() {
     try {
       // 1. 先测试连通性
       console.log('[AI Settings] 测试连通性...')
-
-      // 使用模型列表中的第一个模型进行测试
-      let testModel = 'gpt-3.5-turbo' // 默认模型
-      const cachedModels = providerModelsCache[provider]
-      if (cachedModels && cachedModels.length > 0) {
-        testModel = cachedModels[0].id
-      }
-
       const testResponse = await fetch('/api/ai/test-connection', {
         method: 'POST',
         headers: {
@@ -391,7 +555,7 @@ export default function AISettingsPage() {
           provider: 'custom',
           apiKey: config.apiKey,
           baseUrl: config.baseUrl,
-          model: testModel,
+          model: config.selectedModels?.[0] || 'test-model', // 使用第一个选中的模型或测试模型
         }),
       })
 
@@ -970,19 +1134,161 @@ export default function AISettingsPage() {
         )}
       </div>
 
-      {/* 各厂商独立配置 */}
+      {/* 配置模式选择 */}
       <div className="glass rounded-lg border border-[var(--color-border-light)] p-6 space-y-4">
+        <div>
+          <h3 className="font-medium text-[var(--color-text)] mb-1">
+            配置模式
+          </h3>
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            选择使用 OpenRouter 统一配置还是各厂商独立配置
+          </p>
+        </div>
+
+        {loadingConfigMode ? (
+          <div className="flex items-center gap-2 text-[var(--color-text-secondary)]">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span className="text-sm">加载中...</span>
+          </div>
+        ) : (
+          <div className="flex gap-4">
+            <button
+              onClick={() => saveConfigMode('openrouter')}
+              disabled={savingConfigMode}
+              className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all cursor-pointer ${
+                configMode === 'openrouter'
+                  ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5 text-[var(--color-primary)]'
+                  : 'border-[var(--color-border-light)] text-[var(--color-text)] hover:border-[var(--color-primary)]/30'
+              } ${savingConfigMode ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <div className="text-left">
+                <div className="font-medium mb-1">OpenRouter 统一配置</div>
+                <div className="text-sm opacity-75">通过一个 API Key 访问所有厂商模型</div>
+              </div>
+            </button>
+            <button
+              onClick={() => saveConfigMode('independent')}
+              disabled={savingConfigMode}
+              className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all cursor-pointer ${
+                configMode === 'independent'
+                  ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5 text-[var(--color-primary)]'
+                  : 'border-[var(--color-border-light)] text-[var(--color-text)] hover:border-[var(--color-primary)]/30'
+              } ${savingConfigMode ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <div className="text-left">
+                <div className="font-medium mb-1">厂商独立配置</div>
+                <div className="text-sm opacity-75">为每个厂商单独配置 API Key</div>
+              </div>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* OpenRouter 统一配置 */}
+      {configMode === 'openrouter' && (
+        <div className="glass rounded-lg border border-[var(--color-border-light)] p-6 space-y-4">
+        <div>
+          <h3 className="font-medium text-[var(--color-text)] mb-1">
+            OpenRouter 统一配置（推荐）
+          </h3>
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            使用 OpenRouter 可以通过一个 API Key 访问所有厂商的模型
+          </p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-[var(--color-text)] mb-2">
+            OpenRouter API Key
+          </label>
+          <input
+            type="text"
+            value={openrouterApiKeyMasked || openrouterApiKey}
+            onChange={(e) => {
+              setOpenrouterApiKey(e.target.value)
+              setOpenrouterApiKeyMasked('') // 清除脱敏值，显示用户输入
+            }}
+            placeholder={openrouterApiKeyMasked ? '已配置（点击修改）' : '输入 OpenRouter API Key'}
+            className="w-full px-3 py-2 border border-[var(--color-border-light)] rounded-md bg-white/80 backdrop-blur-md text-[var(--color-text)] focus:outline-none focus:border-[var(--color-primary)]"
+          />
+          <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
+            在 <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="text-[var(--color-primary)] hover:underline cursor-pointer">OpenRouter</a> 获取 API Key
+          </p>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <button
+            onClick={handleTestOpenrouter}
+            disabled={(!openrouterApiKey && !openrouterApiKeyMasked) || testingOpenrouter}
+            className="flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)] text-white rounded-md hover:bg-[var(--color-primary-dark)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+          >
+            {testingOpenrouter ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                测试中...
+              </>
+            ) : (
+              <>
+                <Check className="w-4 h-4" />
+                测试连接
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={handleSaveOpenrouterKey}
+            disabled={!openrouterApiKey || savingConfigMode}
+            className="flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)] text-white rounded-md hover:bg-[var(--color-primary-dark)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+          >
+            {savingConfigMode ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                保存中...
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4" />
+                保存
+              </>
+            )}
+          </button>
+
+          {openrouterTestResult && (
+            <div className="flex items-center gap-2">
+              {openrouterTestResult.success ? (
+                <>
+                  <CheckCircle2 className="w-5 h-5 text-green-500" />
+                  <span className="text-sm text-green-600">连接成功</span>
+                </>
+              ) : (
+                <>
+                  <XCircle className="w-5 h-5 text-red-500" />
+                  <span className="text-sm text-red-600">
+                    {openrouterTestResult.error || '连接失败'}
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+      )}
+
+      {/* 各厂商独立配置 */}
+      {configMode === 'independent' && (
+        <div className="glass rounded-lg border border-[var(--color-border-light)] p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="font-medium text-[var(--color-text)] mb-1">
-              AI 厂商配置
+              各厂商独立配置
             </h3>
             <p className="text-sm text-[var(--color-text-secondary)]">
-              为每个厂商配置 API Key 和 Base URL，OpenRouter 也作为一个独立厂商
+              为每个厂商单独配置 API Key 和 Base URL
             </p>
           </div>
           <Select
-            options={SUPPORTED_PROVIDERS.map(provider => ({
+            options={SUPPORTED_PROVIDERS.filter(
+              p => p.id === 'other' || !providerConfigs.find(c => c.provider === p.id)
+            ).map(provider => ({
               value: provider.id,
               label: provider.name,
             }))}
@@ -1012,8 +1318,8 @@ export default function AISettingsPage() {
                 >
                   <div className="flex items-center justify-between">
                     <h4 className="font-medium text-[var(--color-text)]">
-                      {isOtherProvider
-                        ? (config.customProviderName || '其他厂商')
+                      {isOtherProvider 
+                        ? (config.customProviderName || '其他厂商') 
                         : (providerInfo?.name || config.provider)}
                     </h4>
                     <button
@@ -1184,19 +1490,29 @@ export default function AISettingsPage() {
                       {/* 显示自定义模型（用于"其他"厂商） */}
                       {isOtherProvider && config.customModels && config.customModels.length > 0 ? (
                         config.customModels.map((model) => {
+                          const isSelected = (config.selectedModels || []).includes(model.id)
+                          const checkboxId = `provider-${config.provider}-model-${model.id}`
+                          
                           return (
                             <div
                               key={model.id}
                               className="flex items-center gap-2 hover:bg-white/80 p-2 rounded transition-colors"
                             >
-                              <div className="flex-1 min-w-0">
+                              <input
+                                type="checkbox"
+                                id={checkboxId}
+                                checked={isSelected}
+                                onChange={() => toggleProviderModel(config.provider, model.id)}
+                                className="w-4 h-4 text-[var(--color-primary)] border-[var(--color-border-light)] rounded focus:ring-[var(--color-primary)] cursor-pointer"
+                              />
+                              <label htmlFor={checkboxId} className="flex-1 min-w-0 cursor-pointer">
                                 <div className="text-sm font-medium text-[var(--color-text)] truncate">
                                   {model.name}
                                 </div>
                                 <div className="text-xs text-[var(--color-text-secondary)]">
                                   {model.id}
                                 </div>
-                              </div>
+                              </label>
                               <button
                                 onClick={() => handleDeleteCustomModel(config.provider, model.id)}
                                 className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer"
@@ -1208,11 +1524,22 @@ export default function AISettingsPage() {
                         })
                       ) : !isOtherProvider && providerModelsCache[config.provider] && providerModelsCache[config.provider].length > 0 ? (
                         providerModelsCache[config.provider].map((model) => {
+                          const isSelected = (config.selectedModels || []).includes(model.id)
+                          const checkboxId = `provider-${config.provider}-model-${model.id}`
+                          
                           return (
-                            <div
+                            <label
                               key={model.id}
-                              className="flex items-center gap-2 hover:bg-white/80 p-2 rounded transition-colors"
+                              htmlFor={checkboxId}
+                              className="flex items-center gap-2 cursor-pointer hover:bg-white/80 p-2 rounded transition-colors"
                             >
+                              <input
+                                type="checkbox"
+                                id={checkboxId}
+                                checked={isSelected}
+                                onChange={() => toggleProviderModel(config.provider, model.id)}
+                                className="w-4 h-4 text-[var(--color-primary)] border-[var(--color-border-light)] rounded focus:ring-[var(--color-primary)] cursor-pointer"
+                              />
                               <div className="flex-1 min-w-0">
                                 <div className="text-sm font-medium text-[var(--color-text)] truncate">
                                   {model.name}
@@ -1221,25 +1548,22 @@ export default function AISettingsPage() {
                                   {model.id} · 上下文: {(model.contextLength / 1000).toFixed(0)}K
                                 </div>
                               </div>
-                            </div>
+                            </label>
                           )
                         })
                       ) : (
                         <div className="text-center py-4 text-sm text-[var(--color-text-secondary)]">
-                          {isOtherProvider
-                            ? '点击"添加模型"按钮手动添加自定义模型'
-                            : config.apiKey
-                            ? '点击"获取模型列表"按钮加载模型'
+                          {isOtherProvider 
+                            ? '点击"添加模型"按钮手动添加自定义模型' 
+                            : config.apiKey 
+                            ? '点击"获取模型列表"按钮加载模型' 
                             : '请先输入 API Key'}
                         </div>
                       )}
                     </div>
                     <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
-                      {isOtherProvider
-                        ? `共 ${config.customModels?.length || 0} 个自定义模型`
-                        : providerModelsCache[config.provider]
-                        ? `共 ${providerModelsCache[config.provider].length} 个模型`
-                        : '暂无模型'}
+                      已选择 {(config.selectedModels || []).length} 个模型
+                      {isOtherProvider && config.customModels && ` · 共 ${config.customModels.length} 个自定义模型`}
                     </p>
                   </div>
 
@@ -1282,8 +1606,10 @@ export default function AISettingsPage() {
           </div>
         )}
       </div>
+      )}
 
-      {/* 模型选择器 */}
+      {/* 模型选择器 - 仅在 OpenRouter 模式下显示 */}
+      {configMode === 'openrouter' && (
       <div className="glass rounded-lg border border-[var(--color-border-light)] p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div>
@@ -1401,6 +1727,7 @@ export default function AISettingsPage() {
           )}
         </div>
       </div>
+      )}
     </div>
   )
 }

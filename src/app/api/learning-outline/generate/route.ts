@@ -3,9 +3,9 @@ import { eq } from 'drizzle-orm'
 import { getDbClient } from '@/lib/db-connection'
 import { learningPlans, learningOutlines, knowledgeContents } from '@/db/schema'
 import { generateOutlinePrompt, type OutlineInput } from '@/lib/ai/prompts'
-import { type AIClient, OpenAIClient } from '@/lib/ai/client'
+import { type AIClient } from '@/lib/ai/client'
 import { getUserIdOrDemo } from '@/lib/auth/get-user'
-import { getAIConfig } from '@/lib/ai/get-ai-config'
+import { getAIConfig, createAIClientFromConfig } from '@/lib/ai/get-ai-config'
 import { performSearch } from '@/lib/search/utils'
 import { getSearchConfig } from '@/lib/search/get-search-config'
 
@@ -95,11 +95,7 @@ export async function POST(request: NextRequest) {
     try {
       const config = await getAIConfig(request as unknown as Request, userId, modelId)
 
-      aiClient = new OpenAIClient(
-        config.apiKey,
-        config.model,
-        config.baseUrl
-      )
+      aiClient = createAIClientFromConfig(config)
     } catch (configError) {
       console.error('[API] Failed to get AI config:', configError)
       return NextResponse.json(
@@ -134,7 +130,6 @@ export async function POST(request: NextRequest) {
           },
         ],
         temperature: 0.7,
-        maxTokens: 100000,
       })
     } catch (aiError) {
       console.error('[API] AI call failed:', aiError)

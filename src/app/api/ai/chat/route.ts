@@ -1,11 +1,12 @@
 /**
  * AI 对话 API
  * 支持流式响应，使用统一的配置逻辑
+ * 支持不同厂商的消息格式（OpenAI 和 Anthropic）
  */
 
 import { NextRequest } from 'next/server'
 import { type AIMessage } from '@/lib/ai/client'
-import { getAIConfig } from '@/lib/ai/get-ai-config'
+import { getAIConfig, createAIClientFromConfig } from '@/lib/ai/get-ai-config'
 import { getCurrentUserId } from '@/lib/auth/get-user'
 import { performSearch, extractSearchQuery } from '@/lib/search/utils'
 import { getSearchConfig } from '@/lib/search/get-search-config'
@@ -17,6 +18,26 @@ interface ChatRequest {
   maxTokens?: number
   stream?: boolean
   enableWebSearch?: boolean // 是否启用联网搜索
+}
+
+/**
+ * 根据消息格式转换消息
+ * OpenAI 格式：直接使用
+ * Anthropic 格式：分离 system 消息
+ */
+function convertMessagesForFormat(
+  messages: AIMessage[],
+  format: 'openai' | 'anthropic' = 'openai'
+): { messages: AIMessage[]; systemMessage?: string } {
+  if (format === 'anthropic') {
+    const systemMessage = messages.find(m => m.role === 'system')?.content
+    const conversationMessages = messages.filter(m => m.role !== 'system')
+    return {
+      messages: conversationMessages,
+      systemMessage,
+    }
+  }
+  return { messages }
 }
 
 export async function POST(request: NextRequest) {
@@ -102,32 +123,103 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // 根据消息格式转换消息
+    const messageFormat = config.messageFormat || 'openai'
+    const { messages: convertedMessages, systemMessage } = convertMessagesForFormat(finalMessages, messageFormat)
+
+    // 调试日志
+    console.log('[AI Chat API] 请求配置:', {
+      baseUrl: config.baseUrl,
+      model: config.model,
+      messageFormat,
+      isOpenRouter: config.baseUrl.includes('openrouter.ai'),
+    })
+
     if (stream) {
       // 流式响应
       try {
-        const response = await fetch(`${config.baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${config.apiKey}`,
-            ...(config.baseUrl.includes('openrouter.ai') ? {
-              'HTTP-Referer': 'https://ai-learning-platform.com',
-              'X-Title': 'AI Learning Platform'
-            } : {})
-          },
-          body: JSON.stringify({
+        let response
+        
+        if (messageFormat === 'anthropic') {
+          // Anthropic 格式
+          const anthropicBody: any = {
             model: config.model,
-            messages: finalMessages,
+            messages: convertedMessages,
+            system: systemMessage,
             temperature: temperature || 0.7,
-            max_tokens: maxTokens || 100000,
             stream: true,
-          }),
-        })
+          }
+
+          // 只在明确指定 maxTokens 时才添加
+          if (maxTokens !== undefined) {
+            anthropicBody.max_tokens = maxTokens
+          }
+
+          response = await fetch(`${config.baseUrl}/messages`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': config.apiKey,
+              'anthropic-version': '2023-06-01',
+            },
+            body: JSON.stringify(anthropicBody),
+          })
+        } else {
+          // OpenAI 格式
+          const requestBody: any = {
+            model: config.model,
+            messages: convertedMessages,
+            temperature: temperature || 0.7,
+            stream: true,
+          }
+
+          // 只在明确指定 maxTokens 时才添加
+          if (maxTokens !== undefined) {
+            requestBody.max_tokens = maxTokens
+          }
+
+          console.log('[AI Chat API] 请求体:', {
+            model: requestBody.model,
+            messageCount: requestBody.messages.length,
+            temperature: requestBody.temperature,
+            max_tokens: requestBody.max_tokens,
+          })
+
+          response = await fetch(`${config.baseUrl}/chat/completions`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${config.apiKey}`,
+              ...(config.baseUrl.includes('openrouter.ai') ? {
+                'HTTP-Referer': 'https://ai-learning-platform.com',
+                'X-Title': 'AI Learning Platform'
+              } : {})
+            },
+            body: JSON.stringify(requestBody),
+          })
+        }
 
         if (!response.ok) {
           const errorText = await response.text()
-          console.error('[AI Chat API] AI API 错误:', response.status, errorText)
-          throw new Error(`AI API error: ${response.statusText}`)
+          console.error('[AI Chat API] AI API 错误:', {
+            status: response.status,
+            statusText: response.statusText,
+            baseUrl: config.baseUrl,
+            model: config.model,
+            errorText,
+          })
+
+          // 尝试解析错误信息
+          let errorMessage = response.statusText
+          try {
+            const errorData = JSON.parse(errorText)
+            errorMessage = errorData.error?.message || errorData.message || errorMessage
+          } catch (e) {
+            // 无法解析 JSON，使用原始文本
+            errorMessage = errorText || errorMessage
+          }
+
+          throw new Error(`AI API 错误 (${config.model}): ${errorMessage}`)
         }
         
         // 直接返回原始的 SSE 流
@@ -144,33 +236,90 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // 非流式响应
-      const response = await fetch(`${config.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${config.apiKey}`,
-          ...(config.baseUrl.includes('openrouter.ai') ? {
-            'HTTP-Referer': 'https://ai-learning-platform.com',
-            'X-Title': 'AI Learning Platform'
-          } : {})
-        },
-        body: JSON.stringify({
+      let response
+      
+      if (messageFormat === 'anthropic') {
+        // Anthropic 格式
+        const anthropicBody: any = {
           model: config.model,
-          messages: finalMessages,
+          messages: convertedMessages,
+          system: systemMessage,
           temperature: temperature || 0.7,
-          max_tokens: maxTokens || 100000,
+        }
+
+        // 只在明确指定 maxTokens 时才添加
+        if (maxTokens !== undefined) {
+          anthropicBody.max_tokens = maxTokens
+        }
+
+        response = await fetch(`${config.baseUrl}/messages`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': config.apiKey,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify(anthropicBody),
+        })
+      } else {
+        // OpenAI 格式
+        const requestBody: any = {
+          model: config.model,
+          messages: convertedMessages,
+          temperature: temperature || 0.7,
           stream: false,
-        }),
-      })
+        }
+
+        // 只在明确指定 maxTokens 时才添加
+        if (maxTokens !== undefined) {
+          requestBody.max_tokens = maxTokens
+        }
+
+        response = await fetch(`${config.baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${config.apiKey}`,
+            ...(config.baseUrl.includes('openrouter.ai') ? {
+              'HTTP-Referer': 'https://ai-learning-platform.com',
+              'X-Title': 'AI Learning Platform'
+            } : {})
+          },
+          body: JSON.stringify(requestBody),
+        })
+      }
 
       if (!response.ok) {
         const errorText = await response.text()
-        console.error('[AI Chat API] AI API 错误:', response.status, errorText)
-        throw new Error(`AI API error: ${response.statusText}`)
+        console.error('[AI Chat API] AI API 错误:', {
+          status: response.status,
+          statusText: response.statusText,
+          baseUrl: config.baseUrl,
+          model: config.model,
+          errorText,
+        })
+
+        // 尝试解析错误信息
+        let errorMessage = response.statusText
+        try {
+          const errorData = JSON.parse(errorText)
+          errorMessage = errorData.error?.message || errorData.message || errorMessage
+        } catch (e) {
+          // 无法解析 JSON，使用原始文本
+          errorMessage = errorText || errorMessage
+        }
+
+        throw new Error(`AI API 错误 (${config.model}): ${errorMessage}`)
       }
 
       const data = await response.json()
-      const content = (data as any).choices?.[0]?.message?.content || ''
+      
+      let content = ''
+      if (messageFormat === 'anthropic') {
+        content = (data as any).content?.[0]?.text || ''
+      } else {
+        content = (data as any).choices?.[0]?.message?.content || ''
+      }
 
       return new Response(
         JSON.stringify({ response: content }),

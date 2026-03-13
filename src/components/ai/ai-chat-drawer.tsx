@@ -323,20 +323,33 @@ export function AIChatDrawer({ open, onOpenChange }: AIChatDrawerProps) {
                     content?: string
                   }
                 }>
+                type?: string
+                delta?: {
+                  text?: string
+                }
               }
-              
-              // 提取内容
-              const content = parsed.choices?.[0]?.delta?.content || ''
-              
+
+              // 提取内容（支持 OpenAI 和 Anthropic 格式）
+              let content = ''
+
+              // OpenAI 格式
+              if (parsed.choices?.[0]?.delta?.content) {
+                content = parsed.choices[0].delta.content
+              }
+              // Anthropic 格式
+              else if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+                content = parsed.delta.text
+              }
+
               if (content) {
                 fullContent += content
-                
+
                 // 第一次收到内容时，关闭 loading 并添加 AI 消息
                 if (!assistantMessageAdded) {
                   setIsLoading(false)
                   assistantMessageAdded = true
                 }
-                
+
                 // 实时更新消息内容
                 const assistantMessage: Message = {
                   role: 'assistant',

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getUserIdOrDemo } from '@/lib/auth/get-user'
-import { getAIConfig } from '@/lib/ai/get-ai-config'
-import { OpenAIClient } from '@/lib/ai/client'
+import { getAIConfig, createAIClientFromConfig } from '@/lib/ai/get-ai-config'
+import { type AIClient } from '@/lib/ai/client'
 
 /**
  * POST /api/cornell/generate - AI 生成康奈尔笔记的线索和总结
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
 
     // 获取 AI 配置
     const config = await getAIConfig(request as unknown as Request, userId, modelId)
-    const aiClient = new OpenAIClient(config.apiKey, config.model, config.baseUrl)
+    const aiClient = createAIClientFromConfig(config)
 
     const prompt = `请根据以下康奈尔笔记的主笔记区内容，生成线索区和总结区的内容：
 
@@ -45,7 +45,6 @@ ${mainNotes}
     const response = await aiClient.chat({
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.7,
-      maxTokens: 100000,
     })
 
     // 尝试解析 JSON

@@ -15,7 +15,6 @@ export const users = sqliteTable('users', {
   avatar: text('avatar'),
   provider: text('provider'), // 'email' | 'google' | 'github'
   providerId: text('provider_id'),
-  configMode: text('config_mode').default('openrouter'), // 'openrouter' | 'independent'
   // 联网搜索配置
   searchResultCount: integer('search_result_count').default(5), // 搜索结果数量
   searchLanguage: text('search_language').default('auto'), // 搜索语言: 'auto' | 'zh' | 'en'
@@ -274,6 +273,9 @@ export const aiProviders = sqliteTable('ai_providers', {
   baseUrl: text('base_url'), // 该厂商的 API 地址
   isEnabled: integer('is_enabled', { mode: 'boolean' }).default(false), // 是否启用
   selectedModels: text('selected_models'), // JSON 数组，存储该厂商选中的模型 ID
+  customModels: text('custom_models'), // JSON 数组，存储自定义模型列表（用于"其他"厂商）
+  customProviderName: text('custom_provider_name'), // 自定义厂商名称（用于"其他"厂商）
+  messageFormat: text('message_format').default('openai'), // 消息格式：'openai' | 'anthropic'（用于"其他"厂商）
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).$onUpdate(() => new Date()),
 })

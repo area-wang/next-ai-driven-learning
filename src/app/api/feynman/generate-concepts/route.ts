@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getUserIdOrDemo } from '@/lib/auth/get-user'
-import { getAIConfig } from '@/lib/ai/get-ai-config'
-import { OpenAIClient } from '@/lib/ai/client'
+import { getAIConfig, createAIClientFromConfig } from '@/lib/ai/get-ai-config'
+import { type AIClient } from '@/lib/ai/client'
 
 /**
  * POST /api/feynman/generate-concepts
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
 
     // 获取 AI 配置
     const config = await getAIConfig(request as unknown as Request, userId)
-    const aiClient = new OpenAIClient(config.apiKey, config.model, config.baseUrl)
+    const aiClient = createAIClientFromConfig(config)
 
     // 提取纯文本内容
     const plainText = content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
@@ -58,7 +58,6 @@ ${plainText.substring(0, 3000)}
     const response = await aiClient.chat({
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.7,
-      maxTokens: 100000,
     })
 
     // 尝试解析 JSON

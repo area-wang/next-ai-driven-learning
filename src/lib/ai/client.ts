@@ -15,11 +15,24 @@ export interface AIStreamOptions {
   onChunk?: (chunk: string) => void
   onComplete?: (fullText: string) => void
   onError?: (error: Error) => void
+  // Structured output 支持
+  responseFormat?: {
+    type: 'json_object' | 'json_schema'
+    schema?: Record<string, unknown> // JSON Schema
+  }
+  // Tool/Function call 支持（用于 Anthropic）
+  tools?: Array<{
+    name: string
+    description: string
+    input_schema: Record<string, unknown>
+  }>
 }
 
 export interface AIClient {
   chat(options: AIStreamOptions): Promise<string>
   chatStream(options: AIStreamOptions): Promise<ReadableStream<string>>
+  // 获取消息格式类型
+  getMessageFormat(): 'openai' | 'anthropic'
 }
 
 export type AIProvider = 'openai' | 'deepseek' | 'gemini' | 'claude' | 'cloudflare' | 'custom'
@@ -39,9 +52,14 @@ export class OpenAIClient implements AIClient {
   }
 
   async chat(options: AIStreamOptions): Promise<string> {
-    const { messages, temperature = 0.7, maxTokens = 100000 } = options
+    const { messages, temperature = 0.7, maxTokens, responseFormat } = options
 
     try {
+      // 检查是否是 OpenRouter
+      const isOpenRouter = this.baseURL.includes('openrouter.ai')
+      // 检查是否支持 response_format（只有 OpenAI 官方支持）
+      const supportsResponseFormat = this.baseURL.includes('api.openai.com')
+
       // 构建请求头对象
       const headersObj: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -49,9 +67,33 @@ export class OpenAIClient implements AIClient {
       }
 
       // 如果是 OpenRouter API，添加必要的请求头
-      if (this.baseURL.includes('openrouter.ai')) {
+      if (isOpenRouter) {
         headersObj['HTTP-Referer'] = 'https://ai-learning-platform.com'
         headersObj['X-Title'] = 'AI Learning Platform'
+      }
+
+      // 构建请求体
+      const requestBody: Record<string, unknown> = {
+        model: this.model,
+        messages,
+        temperature,
+      }
+
+      // 只在明确指定 maxTokens 时才添加
+      if (maxTokens !== undefined) {
+        requestBody.max_tokens = maxTokens
+      }
+
+      // 添加 response_format（仅 OpenAI 官方支持）
+      if (responseFormat && supportsResponseFormat) {
+        if (responseFormat.type === 'json_schema' && responseFormat.schema) {
+          requestBody.response_format = {
+            type: 'json_schema',
+            json_schema: responseFormat.schema,
+          }
+        } else if (responseFormat.type === 'json_object') {
+          requestBody.response_format = { type: 'json_object' }
+        }
       }
 
       // 使用 fetch 的 headers 选项，不使用 Headers 构造函数
@@ -59,12 +101,7 @@ export class OpenAIClient implements AIClient {
       const response = await fetch(`${this.baseURL}/chat/completions`, {
         method: 'POST',
         headers: headersObj,
-        body: JSON.stringify({
-          model: this.model,
-          messages,
-          temperature,
-          max_tokens: maxTokens,
-        }),
+        body: JSON.stringify(requestBody),
       })
 
       if (!response.ok) {
@@ -94,7 +131,7 @@ export class OpenAIClient implements AIClient {
   }
 
   async chatStream(options: AIStreamOptions): Promise<ReadableStream<string>> {
-    const { messages, temperature = 0.7, maxTokens = 100000 } = options
+    const { messages, temperature = 0.7, maxTokens } = options
 
     // 构建请求头对象
     const headersObj: Record<string, string> = {
@@ -108,16 +145,22 @@ export class OpenAIClient implements AIClient {
       headersObj['X-Title'] = 'AI Learning Platform'
     }
 
+    const requestBody: Record<string, unknown> = {
+      model: this.model,
+      messages,
+      temperature,
+      stream: true,
+    }
+
+    // 只在明确指定 maxTokens 时才添加
+    if (maxTokens !== undefined) {
+      requestBody.max_tokens = maxTokens
+    }
+
     const response = await fetch(`${this.baseURL}/chat/completions`, {
       method: 'POST',
       headers: headersObj,
-      body: JSON.stringify({
-        model: this.model,
-        messages,
-        temperature,
-        max_tokens: maxTokens,
-        stream: true,
-      }),
+      body: JSON.stringify(requestBody),
     })
 
     if (!response.ok) {
@@ -185,6 +228,10 @@ export class OpenAIClient implements AIClient {
       },
     })
   }
+
+  getMessageFormat(): 'openai' | 'anthropic' {
+    return 'openai'
+  }
 }
 
 /**
@@ -209,7 +256,7 @@ export class GeminiClient implements AIClient {
   }
 
   async chat(options: AIStreamOptions): Promise<string> {
-    const { messages, temperature = 0.7, maxTokens = 100000 } = options
+    const { messages, temperature = 0.7, maxTokens } = options
 
     try {
       // 转换消息格式
@@ -222,6 +269,15 @@ export class GeminiClient implements AIClient {
 
       const systemInstruction = messages.find(m => m.role === 'system')?.content
 
+      const generationConfig: Record<string, unknown> = {
+        temperature,
+      }
+
+      // 只在明确指定 maxTokens 时才添加
+      if (maxTokens !== undefined) {
+        generationConfig.maxOutputTokens = maxTokens
+      }
+
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`,
         {
@@ -232,10 +288,7 @@ export class GeminiClient implements AIClient {
           body: JSON.stringify({
             contents,
             systemInstruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined,
-            generationConfig: {
-              temperature,
-              maxOutputTokens: maxTokens,
-            },
+            generationConfig,
           }),
         }
       )
@@ -259,7 +312,7 @@ export class GeminiClient implements AIClient {
   }
 
   async chatStream(options: AIStreamOptions): Promise<ReadableStream<string>> {
-    const { messages, temperature = 0.7, maxTokens = 100000 } = options
+    const { messages, temperature = 0.7, maxTokens } = options
 
     const contents = messages
       .filter(m => m.role !== 'system')
@@ -269,6 +322,15 @@ export class GeminiClient implements AIClient {
       }))
 
     const systemInstruction = messages.find(m => m.role === 'system')?.content
+
+    const generationConfig: Record<string, unknown> = {
+      temperature,
+    }
+
+    // 只在明确指定 maxTokens 时才添加
+    if (maxTokens !== undefined) {
+      generationConfig.maxOutputTokens = maxTokens
+    }
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:streamGenerateContent?key=${this.apiKey}`,
@@ -280,10 +342,7 @@ export class GeminiClient implements AIClient {
         body: JSON.stringify({
           contents,
           systemInstruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined,
-          generationConfig: {
-            temperature,
-            maxOutputTokens: maxTokens,
-          },
+          generationConfig,
         }),
       }
     )
@@ -337,6 +396,10 @@ export class GeminiClient implements AIClient {
       },
     })
   }
+
+  getMessageFormat(): 'openai' | 'anthropic' {
+    return 'openai'
+  }
 }
 
 /**
@@ -352,12 +415,32 @@ export class ClaudeClient implements AIClient {
   }
 
   async chat(options: AIStreamOptions): Promise<string> {
-    const { messages, temperature = 0.7, maxTokens = 100000 } = options
+    const { messages, temperature = 0.7, maxTokens, tools } = options
 
     try {
       // 提取 system 消息
       const systemMessage = messages.find(m => m.role === 'system')?.content
       const conversationMessages = messages.filter(m => m.role !== 'system')
+
+      // 构建请求体
+      const requestBody: Record<string, unknown> = {
+        model: this.model,
+        messages: conversationMessages,
+        system: systemMessage,
+        temperature,
+      }
+
+      // 只在明确指定 maxTokens 时才添加
+      if (maxTokens !== undefined) {
+        requestBody.max_tokens = maxTokens
+      }
+
+      // 添加 tools（用于约束输出格式）
+      if (tools && tools.length > 0) {
+        requestBody.tools = tools
+        // 强制使用第一个 tool
+        requestBody.tool_choice = { type: 'tool', name: tools[0].name }
+      }
 
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -366,13 +449,7 @@ export class ClaudeClient implements AIClient {
           'x-api-key': this.apiKey,
           'anthropic-version': '2023-06-01',
         },
-        body: JSON.stringify({
-          model: this.model,
-          messages: conversationMessages,
-          system: systemMessage,
-          temperature,
-          max_tokens: maxTokens,
-        }),
+        body: JSON.stringify(requestBody),
       })
 
       if (!response.ok) {
@@ -380,9 +457,25 @@ export class ClaudeClient implements AIClient {
       }
 
       const data = await response.json() as {
-        content: Array<{ text: string }>
+        content: Array<{
+          type: string
+          text?: string
+          name?: string
+          input?: Record<string, unknown>
+        }>
       }
-      return data.content[0].text
+
+      // 如果使用了 tool call，返回 tool 的 input（JSON 格式）
+      if (tools && tools.length > 0) {
+        const toolUse = data.content.find(c => c.type === 'tool_use')
+        if (toolUse && toolUse.input) {
+          return JSON.stringify(toolUse.input)
+        }
+      }
+
+      // 否则返回普通文本
+      const textContent = data.content.find(c => c.type === 'text')
+      return textContent?.text || ''
     } catch (error) {
       options.onError?.(error instanceof Error ? error : new Error('Unknown error'))
       throw error
@@ -390,10 +483,23 @@ export class ClaudeClient implements AIClient {
   }
 
   async chatStream(options: AIStreamOptions): Promise<ReadableStream<string>> {
-    const { messages, temperature = 0.7, maxTokens = 100000 } = options
+    const { messages, temperature = 0.7, maxTokens } = options
 
     const systemMessage = messages.find(m => m.role === 'system')?.content
     const conversationMessages = messages.filter(m => m.role !== 'system')
+
+    const requestBody: Record<string, unknown> = {
+      model: this.model,
+      messages: conversationMessages,
+      system: systemMessage,
+      temperature,
+      stream: true,
+    }
+
+    // 只在明确指定 maxTokens 时才添加
+    if (maxTokens !== undefined) {
+      requestBody.max_tokens = maxTokens
+    }
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -402,14 +508,7 @@ export class ClaudeClient implements AIClient {
         'x-api-key': this.apiKey,
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify({
-        model: this.model,
-        messages: conversationMessages,
-        system: systemMessage,
-        temperature,
-        max_tokens: maxTokens,
-        stream: true,
-      }),
+      body: JSON.stringify(requestBody),
     })
 
     if (!response.ok) {
@@ -468,6 +567,10 @@ export class ClaudeClient implements AIClient {
       },
     })
   }
+
+  getMessageFormat(): 'openai' | 'anthropic' {
+    return 'anthropic'
+  }
 }
 
 /**
@@ -483,14 +586,20 @@ export class CloudflareAIClient implements AIClient {
   }
 
   async chat(options: AIStreamOptions): Promise<string> {
-    const { messages, temperature = 0.7, maxTokens = 100000 } = options
+    const { messages, temperature = 0.7, maxTokens } = options
 
     try {
-      const response = await this.ai.run(this.model, {
+      const config: Record<string, unknown> = {
         messages,
         temperature,
-        max_tokens: maxTokens,
-      })
+      }
+
+      // 只在明确指定 maxTokens 时才添加
+      if (maxTokens !== undefined) {
+        config.max_tokens = maxTokens
+      }
+
+      const response = await this.ai.run(this.model, config)
 
       return response.response || ''
     } catch (error) {
@@ -500,14 +609,20 @@ export class CloudflareAIClient implements AIClient {
   }
 
   async chatStream(options: AIStreamOptions): Promise<ReadableStream<string>> {
-    const { messages, temperature = 0.7, maxTokens = 100000 } = options
+    const { messages, temperature = 0.7, maxTokens } = options
 
-    const stream = await this.ai.run(this.model, {
+    const config: Record<string, unknown> = {
       messages,
       temperature,
-      max_tokens: maxTokens,
       stream: true,
-    })
+    }
+
+    // 只在明确指定 maxTokens 时才添加
+    if (maxTokens !== undefined) {
+      config.max_tokens = maxTokens
+    }
+
+    const stream = await this.ai.run(this.model, config)
 
     let fullText = ''
 
@@ -533,6 +648,384 @@ export class CloudflareAIClient implements AIClient {
       },
     })
   }
+
+  getMessageFormat(): 'openai' | 'anthropic' {
+    return 'openai'
+  }
+}
+
+/**
+ * 自定义厂商客户端（支持 OpenAI 和 Anthropic 消息格式）
+ */
+export class CustomProviderClient implements AIClient {
+  private apiKey: string
+  private model: string
+  private baseURL: string
+  private messageFormat: 'openai' | 'anthropic'
+
+  constructor(
+    apiKey: string,
+    model: string,
+    baseURL: string,
+    messageFormat: 'openai' | 'anthropic' = 'openai'
+  ) {
+    this.apiKey = apiKey
+    this.model = model
+    this.baseURL = baseURL
+    this.messageFormat = messageFormat
+  }
+
+  async chat(options: AIStreamOptions): Promise<string> {
+    const { messages, temperature = 0.7, maxTokens } = options
+
+    if (this.messageFormat === 'anthropic') {
+      // 使用 Anthropic 消息格式
+      return this.chatAnthropic(messages, temperature, maxTokens, options)
+    } else {
+      // 使用 OpenAI 消息格式
+      return this.chatOpenAI(messages, temperature, maxTokens, options)
+    }
+  }
+
+  private async chatOpenAI(
+    messages: AIMessage[],
+    temperature: number,
+    maxTokens: number | undefined,
+    options: AIStreamOptions
+  ): Promise<string> {
+    try {
+      // 检查是否是 OpenRouter
+      const isOpenRouter = this.baseURL.includes('openrouter.ai')
+      // 检查是否支持 response_format（只有 OpenAI 官方支持）
+      const supportsResponseFormat = this.baseURL.includes('api.openai.com')
+
+      // 构建请求体
+      const requestBody: Record<string, unknown> = {
+        model: this.model,
+        messages,
+        temperature,
+      }
+
+      // 只在明确指定 maxTokens 时才添加
+      if (maxTokens !== undefined) {
+        requestBody.max_tokens = maxTokens
+      }
+
+      // 添加 response_format（仅 OpenAI 官方支持）
+      if (options.responseFormat && supportsResponseFormat) {
+        if (options.responseFormat.type === 'json_schema' && options.responseFormat.schema) {
+          requestBody.response_format = {
+            type: 'json_schema',
+            json_schema: options.responseFormat.schema,
+          }
+        } else if (options.responseFormat.type === 'json_object') {
+          requestBody.response_format = { type: 'json_object' }
+        }
+      }
+
+      // 构建请求头
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.apiKey}`,
+      }
+
+      // OpenRouter 需要特殊的请求头
+      if (isOpenRouter) {
+        headers['HTTP-Referer'] = 'https://ai-learning-platform.com'
+        headers['X-Title'] = 'AI Learning Platform'
+      }
+
+      const response = await fetch(`${this.baseURL}/chat/completions`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(requestBody),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({})) as { error?: { message?: string } }
+        const errorMessage = errorData.error?.message || response.statusText
+        throw new Error(`AI API 错误 (${this.model}): ${errorMessage}`)
+      }
+
+      const data = await response.json() as {
+        choices: Array<{
+          message: {
+            content: string
+          }
+        }>
+      }
+      return data.choices[0].message.content
+    } catch (error) {
+      options.onError?.(error instanceof Error ? error : new Error('Unknown error'))
+      throw error
+    }
+  }
+
+  private async chatAnthropic(
+    messages: AIMessage[],
+    temperature: number,
+    maxTokens: number | undefined,
+    options: AIStreamOptions
+  ): Promise<string> {
+    try {
+      // 提取 system 消息
+      const systemMessage = messages.find(m => m.role === 'system')?.content
+      const conversationMessages = messages.filter(m => m.role !== 'system')
+
+      // 构建请求体
+      const requestBody: Record<string, unknown> = {
+        model: this.model,
+        messages: conversationMessages,
+        system: systemMessage,
+        temperature,
+      }
+
+      // 只在明确指定 maxTokens 时才添加
+      if (maxTokens !== undefined) {
+        requestBody.max_tokens = maxTokens
+      }
+
+      // 添加 tools（用于约束输出格式）
+      if (options.tools && options.tools.length > 0) {
+        requestBody.tools = options.tools
+        requestBody.tool_choice = { type: 'tool', name: options.tools[0].name }
+      }
+
+      const response = await fetch(`${this.baseURL}/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': this.apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify(requestBody),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({})) as { error?: { message?: string } }
+        const errorMessage = errorData.error?.message || response.statusText
+        throw new Error(`AI API 错误 (${this.model}): ${errorMessage}`)
+      }
+
+      const data = await response.json() as {
+        content: Array<{
+          type: string
+          text?: string
+          name?: string
+          input?: Record<string, unknown>
+        }>
+      }
+
+      // 如果使用了 tool call，返回 tool 的 input（JSON 格式）
+      if (options.tools && options.tools.length > 0) {
+        const toolUse = data.content.find(c => c.type === 'tool_use')
+        if (toolUse && toolUse.input) {
+          return JSON.stringify(toolUse.input)
+        }
+      }
+
+      // 否则返回普通文本
+      const textContent = data.content.find(c => c.type === 'text')
+      return textContent?.text || ''
+    } catch (error) {
+      options.onError?.(error instanceof Error ? error : new Error('Unknown error'))
+      throw error
+    }
+  }
+
+  async chatStream(options: AIStreamOptions): Promise<ReadableStream<string>> {
+    const { messages, temperature = 0.7, maxTokens } = options
+
+    if (this.messageFormat === 'anthropic') {
+      // 使用 Anthropic 消息格式
+      return this.chatStreamAnthropic(messages, temperature, maxTokens, options)
+    } else {
+      // 使用 OpenAI 消息格式
+      return this.chatStreamOpenAI(messages, temperature, maxTokens, options)
+    }
+  }
+
+  private async chatStreamOpenAI(
+    messages: AIMessage[],
+    temperature: number,
+    maxTokens: number | undefined,
+    options: AIStreamOptions
+  ): Promise<ReadableStream<string>> {
+    const requestBody: Record<string, unknown> = {
+      model: this.model,
+      messages,
+      temperature,
+      stream: true,
+    }
+
+    // 只在明确指定 maxTokens 时才添加
+    if (maxTokens !== undefined) {
+      requestBody.max_tokens = maxTokens
+    }
+
+    const response = await fetch(`${this.baseURL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify(requestBody),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({})) as { error?: { message?: string } }
+      const errorMessage = errorData.error?.message || response.statusText
+      throw new Error(`AI API 错误 (${this.model}): ${errorMessage}`)
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('No response body')
+    }
+
+    const decoder = new TextDecoder()
+    let fullText = ''
+
+    return new ReadableStream({
+      async start(controller) {
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            
+            if (done) {
+              options.onComplete?.(fullText)
+              controller.close()
+              break
+            }
+
+            const chunk = decoder.decode(value, { stream: true })
+            const lines = chunk.split('\n').filter(line => line.trim() !== '')
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const data = line.slice(6)
+                
+                if (data === '[DONE]') {
+                  continue
+                }
+
+                try {
+                  const parsed = JSON.parse(data)
+                  const content = parsed.choices[0]?.delta?.content || ''
+                  
+                  if (content) {
+                    fullText += content
+                    options.onChunk?.(content)
+                    controller.enqueue(content)
+                  }
+                } catch (e) {
+                  // 忽略解析错误
+                }
+              }
+            }
+          }
+        } catch (error) {
+          options.onError?.(error instanceof Error ? error : new Error('Stream error'))
+          controller.error(error)
+        }
+      },
+    })
+  }
+
+  private async chatStreamAnthropic(
+    messages: AIMessage[],
+    temperature: number,
+    maxTokens: number | undefined,
+    options: AIStreamOptions
+  ): Promise<ReadableStream<string>> {
+    const systemMessage = messages.find(m => m.role === 'system')?.content
+    const conversationMessages = messages.filter(m => m.role !== 'system')
+
+    const requestBody: Record<string, unknown> = {
+      model: this.model,
+      messages: conversationMessages,
+      system: systemMessage,
+      temperature,
+      stream: true,
+    }
+
+    // 只在明确指定 maxTokens 时才添加
+    if (maxTokens !== undefined) {
+      requestBody.max_tokens = maxTokens
+    }
+
+    const response = await fetch(`${this.baseURL}/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': this.apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify(requestBody),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({})) as { error?: { message?: string } }
+      const errorMessage = errorData.error?.message || response.statusText
+      throw new Error(`AI API 错误 (${this.model}): ${errorMessage}`)
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('No response body')
+    }
+
+    const decoder = new TextDecoder()
+    let fullText = ''
+
+    return new ReadableStream({
+      async start(controller) {
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            
+            if (done) {
+              options.onComplete?.(fullText)
+              controller.close()
+              break
+            }
+
+            const chunk = decoder.decode(value, { stream: true })
+            const lines = chunk.split('\n').filter(line => line.trim() !== '')
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const data = line.slice(6)
+                
+                try {
+                  const parsed = JSON.parse(data)
+                  
+                  if (parsed.type === 'content_block_delta') {
+                    const content = parsed.delta?.text || ''
+                    
+                    if (content) {
+                      fullText += content
+                      options.onChunk?.(content)
+                      controller.enqueue(content)
+                    }
+                  }
+                } catch (e) {
+                  // 忽略解析错误
+                }
+              }
+            }
+          }
+        } catch (error) {
+          options.onError?.(error instanceof Error ? error : new Error('Stream error'))
+          controller.error(error)
+        }
+      },
+    })
+  }
+
+  getMessageFormat(): 'openai' | 'anthropic' {
+    return this.messageFormat
+  }
 }
 
 /**
@@ -544,8 +1037,9 @@ export function createAIClient(config: {
   model?: string
   baseURL?: string
   ai?: any
+  messageFormat?: 'openai' | 'anthropic' // 消息格式（用于自定义厂商）
 }): AIClient {
-  const { provider, apiKey, model, baseURL, ai } = config
+  const { provider, apiKey, model, baseURL, ai, messageFormat = 'openai' } = config
 
   switch (provider) {
     case 'openai':
@@ -571,6 +1065,12 @@ export function createAIClient(config: {
     case 'cloudflare':
       if (!ai) throw new Error('Cloudflare AI binding is required')
       return new CloudflareAIClient(ai, model)
+    
+    case 'custom':
+      // 自定义厂商：使用 CustomProviderClient，支持不同的消息格式
+      if (!apiKey) throw new Error('API key is required for custom provider')
+      if (!baseURL) throw new Error('Base URL is required for custom provider')
+      return new CustomProviderClient(apiKey, model || 'default', baseURL, messageFormat)
     
     default:
       throw new Error(`Unsupported AI provider: ${provider}`)

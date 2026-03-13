@@ -1,12 +1,12 @@
 /**
  * 获取用户的 AI 配置
- * 返回配置模式和默认模型
+ * 返回默认模型
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUserId } from '@/lib/auth/get-user'
 import { getDbClient } from '@/lib/db-connection'
-import { users, aiModels } from '@/db/schema'
+import { aiModels } from '@/db/schema'
 import { eq, and } from 'drizzle-orm'
 
 export async function GET(request: NextRequest) {
@@ -27,15 +27,6 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // 获取用户的配置模式
-    const userResult = await db
-      .select({ configMode: users.configMode })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1)
-
-    const configMode = userResult[0]?.configMode || 'openrouter'
-
     // 获取用户的默认模型
     const defaultModelResult = await db
       .select()
@@ -43,7 +34,6 @@ export async function GET(request: NextRequest) {
       .where(
         and(
           eq(aiModels.userId, userId),
-          eq(aiModels.configMode, configMode),
           eq(aiModels.isDefault, true)
         )
       )
@@ -64,7 +54,6 @@ export async function GET(request: NextRequest) {
         .where(
           and(
             eq(aiModels.userId, userId),
-            eq(aiModels.configMode, configMode),
             eq(aiModels.isSelected, true)
           )
         )
@@ -82,7 +71,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: {
-        configMode,
         defaultModel,
       },
     })

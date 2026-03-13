@@ -9,9 +9,10 @@ import MarkdownIt from 'markdown-it'
 import { getDbClient } from '@/lib/db-connection'
 import { knowledgeContents } from '@/db/schema'
 import { generateContentPrompt, type ContentInput } from '@/lib/ai/prompts'
-import { OpenAIClient, type AIClient } from '@/lib/ai/client'
-import { getAIConfig } from '@/lib/ai/get-ai-config'
+import { type AIClient } from '@/lib/ai/client'
+import { getAIConfig, createAIClientFromConfig } from '@/lib/ai/get-ai-config'
 import { getCurrentUserId } from '@/lib/auth/get-user'
+import { learningContentSchema, learningContentTool } from '@/lib/ai/schemas'
 
 interface GenerateRequest {
   outlineId: string
@@ -116,13 +117,10 @@ export async function POST(request: NextRequest) {
         hasApiKey: !!config.apiKey,
         baseUrl: config.baseUrl,
         model: config.model,
+        messageFormat: config.messageFormat,
       })
 
-      aiClient = new OpenAIClient(
-        config.apiKey,
-        config.model,
-        config.baseUrl
-      )
+      aiClient = createAIClientFromConfig(config)
     } catch (configError) {
       console.error('[API] Failed to get AI config:', configError)
       return NextResponse.json(
@@ -179,34 +177,60 @@ ${JSON.stringify(summaryObj, null, 2)}
 
     // 调用 AI 生成内容
     console.log('[API] Calling AI...')
-    const response = await aiClient.chat({
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
+
+    // 根据消息格式选择使用 structured output 或 tool call
+    const messageFormat = aiClient.getMessageFormat()
+    console.log('[API] Message format:', messageFormat)
+
+    let response: string
+    if (messageFormat === 'openai') {
+      // OpenAI: 使用 JSON Schema 约束输出
+      response = await aiClient.chat({
+        messages: [
+          {
+            role: 'system',
+            content: '你是一个专业的教育内容生成助手。请严格按照 JSON Schema 定义的格式返回内容。',
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        temperature: 0,
+        responseFormat: {
+          type: 'json_schema',
+          schema: learningContentSchema,
         },
-      ],
-      temperature: 0.7,
-      maxTokens: 100000,
-    })
+      })
+    } else {
+      // Anthropic: 使用 Tool Call 约束输出
+      response = await aiClient.chat({
+        messages: [
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        temperature: 0,
+        tools: [learningContentTool],
+      })
+    }
 
     console.log('[API] AI response received, length:', response.length)
 
     // 解析 JSON 响应
     let contentData: { content: string; summary: Record<string, unknown> | string }
     try {
-      // 清理响应：移除可能的 Markdown 代码块标记
-      let cleanedResponse = response.trim()
-      cleanedResponse = cleanedResponse.replace(/^```(?:json)?\s*\n?/i, '')
-      cleanedResponse = cleanedResponse.replace(/\n?```\s*$/i, '')
-      
-      contentData = JSON.parse(cleanedResponse)
-      
+      contentData = JSON.parse(response)
+
       if (!contentData.content || !contentData.summary) {
         throw new Error('响应格式错误：缺少 content 或 summary 字段')
       }
+
+      console.log('[API] JSON parsed successfully')
     } catch (parseError) {
       console.error('[API] Failed to parse JSON response:', parseError)
+      console.error('[API] Response preview:', response.substring(0, 200))
       // 如果解析失败，尝试将整个响应作为 content，并生成简单摘要
       contentData = {
         content: response,

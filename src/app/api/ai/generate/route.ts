@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import MarkdownIt from 'markdown-it'
-import { type AIClient, OpenAIClient } from '@/lib/ai/client'
-import { getAIConfig } from '@/lib/ai/get-ai-config'
+import { type AIClient } from '@/lib/ai/client'
+import { getAIConfig, createAIClientFromConfig } from '@/lib/ai/get-ai-config'
 import { getCurrentUserId } from '@/lib/auth/get-user'
 import { performSearch } from '@/lib/search/utils'
 import { getSearchConfig } from '@/lib/search/get-search-config'
@@ -88,11 +88,7 @@ export async function POST(request: NextRequest) {
     try {
       const config = await getAIConfig(request as unknown as Request, userId, modelId)
 
-      aiClient = new OpenAIClient(
-        config.apiKey,
-        config.model,
-        config.baseUrl
-      )
+      aiClient = createAIClientFromConfig(config)
     } catch (configError) {
       console.error('[API] Failed to get AI config:', configError)
       return NextResponse.json(
@@ -138,7 +134,6 @@ export async function POST(request: NextRequest) {
         },
       ],
       temperature: 0.7,
-      maxTokens: 100000,
     })
 
     // 使用 markdown-it 将 Markdown 转换为 HTML（支持表格、GFM 等）

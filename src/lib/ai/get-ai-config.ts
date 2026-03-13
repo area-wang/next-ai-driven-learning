@@ -11,19 +11,42 @@ export interface AIConfig {
   apiKey: string
   baseUrl: string
   model: string
+  messageFormat?: 'openai' | 'anthropic' // 消息格式（用于自定义厂商）
 }
 
 /**
  * 从模型 ID 中提取厂商 ID
  * 例如：'openai/gpt-4' -> 'openai'
+ * 例如：'anthropic/claude-3.5-sonnet' -> 'anthropic'（OpenRouter 模型）
+ * 例如：'stepfun/step-3.5-flash:free' -> 'openrouter'（OpenRouter 模型）
  * 例如：'deepseek-chat' -> 'deepseek'（从模型名称推断）
  */
 function extractProviderId(modelId: string): string {
-  // 如果包含 /，直接提取前缀
+  // OpenRouter 模型的特征：
+  // 1. 包含 / 分隔符
+  // 2. 第一部分是厂商名（如 anthropic, stepfun, google 等）
+  // 3. 可能包含 : 后缀（如 :free）
+
   if (modelId.includes('/')) {
-    return modelId.split('/')[0]
+    const firstPart = modelId.split('/')[0]
+
+    // 检查是否是"其他"厂商（格式：other-xxx）
+    if (firstPart.startsWith('other-')) {
+      return firstPart
+    }
+
+    // 检查第一部分是否是已知的独立厂商
+    const knownProviders = ['openai', 'google', 'deepseek', 'anthropic', 'qwen', 'moonshotai', 'z-ai', 'minimax', 'bytedance']
+
+    // 如果是已知的独立厂商，直接返回
+    if (knownProviders.includes(firstPart)) {
+      return firstPart
+    }
+
+    // 否则，这是一个 OpenRouter 模型（如 stepfun/step-3.5-flash:free）
+    return 'openrouter'
   }
-  
+
   // 如果不包含 /，尝试从模型名称推断厂商
   // 常见模式：厂商名-模型名（如 deepseek-chat, qwen-turbo）
   const providerPatterns: Record<string, RegExp> = {
@@ -37,13 +60,13 @@ function extractProviderId(modelId: string): string {
     'minimax': /^abab/i,
     'bytedance': /^doubao/i,
   }
-  
+
   for (const [providerId, pattern] of Object.entries(providerPatterns)) {
     if (pattern.test(modelId)) {
       return providerId
     }
   }
-  
+
   // 如果无法推断，返回原始 ID
   return modelId
 }
@@ -108,10 +131,8 @@ export async function getUserDefaultModel(
 
 /**
  * 获取 AI 配置
- * 根据用户的配置模式决定使用哪个 API:
- * - OpenRouter 模式：使用 OpenRouter API
- * - 独立厂商模式：使用对应厂商的独立 API
- * 
+ * 根据模型 ID 自动识别厂商，并返回对应的配置
+ *
  * @param request - Next.js Request 对象
  * @param userId - 用户 ID
  * @param modelId - 可选的模型 ID，如果不提供则使用用户的默认模型
@@ -127,15 +148,6 @@ export async function getAIConfig(
     throw new Error('数据库连接失败')
   }
 
-  // 获取用户的配置模式
-  const user = await db
-    .select({ configMode: users.configMode })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1)
-
-  const configMode = user[0]?.configMode || 'openrouter'
-
   // 如果没有提供 modelId，使用用户的默认模型
   let finalModelId = modelId
   if (!finalModelId) {
@@ -146,65 +158,54 @@ export async function getAIConfig(
     finalModelId = defaultModel.modelId
   }
 
-  // 根据配置模式选择 API
-  if (configMode === 'independent') {
-    // 独立厂商模式：从模型 ID 中提取厂商 ID，使用该厂商的 API
-    const providerId = extractProviderId(finalModelId)
-    
-    const providerConfig = await db
-      .select()
-      .from(aiProviders)
-      .where(
-        and(
-          eq(aiProviders.userId, userId),
-          eq(aiProviders.provider, providerId),
-          eq(aiProviders.isEnabled, true)
-        )
-      )
-      .limit(1)
+  // 从模型 ID 中提取厂商 ID
+  const providerId = extractProviderId(finalModelId)
 
-    if (providerConfig.length > 0 && providerConfig[0].apiKey) {
-      // 独立厂商模式：去掉模型 ID 的厂商前缀
-      // 例如：'deepseek/deepseek-chat' -> 'deepseek-chat'
-      const actualModelId = finalModelId.includes('/') 
-        ? finalModelId.split('/')[1] 
-        : finalModelId
-      
-      return {
-        apiKey: providerConfig[0].apiKey,
-        baseUrl: providerConfig[0].baseUrl || getDefaultBaseUrl(providerId),
-        model: actualModelId, // 使用不带前缀的模型 ID
-      }
-    }
-
-    throw new Error(`厂商 "${providerId}" 未配置或未启用（模型 ID: ${finalModelId}）。请在设置页面配置该厂商的 API Key`)
-  }
-
-  // OpenRouter 模式：使用 OpenRouter API
-  // 从数据库读取 OpenRouter API Key
-  const openrouterConfig = await db
+  // 查询该厂商的配置
+  const providerConfig = await db
     .select()
     .from(aiProviders)
     .where(
       and(
         eq(aiProviders.userId, userId),
-        eq(aiProviders.provider, 'openrouter'),
+        eq(aiProviders.provider, providerId),
         eq(aiProviders.isEnabled, true)
       )
     )
     .limit(1)
 
-  if (openrouterConfig.length > 0 && openrouterConfig[0].apiKey) {
+  if (providerConfig.length > 0 && providerConfig[0].apiKey) {
+    // 处理模型 ID
+    // OpenRouter: 'anthropic/claude-3.5-sonnet' -> 保持不变（OpenRouter 需要完整的 provider/model 格式）
+    // OpenRouter: 'stepfun/step-3.5-flash:free' -> 保持不变
+    // 独立厂商: 'deepseek/deepseek-chat' -> 'deepseek-chat'
+    // 其他厂商: 'other-xxx/gpt-5.2' -> 'gpt-5.2'
+    let actualModelId = finalModelId
+
+    if (providerId === 'openrouter') {
+      // OpenRouter: 保持完整的模型 ID（provider/model 格式）
+      actualModelId = finalModelId
+    } else if (providerId.startsWith('other-')) {
+      // 其他厂商: 去掉 'other-xxx/' 前缀
+      if (finalModelId.includes('/')) {
+        const parts = finalModelId.split('/')
+        actualModelId = parts.length > 1 ? parts[1] : finalModelId
+      }
+    } else if (finalModelId.includes('/')) {
+      // 其他厂商: 去掉厂商前缀
+      const parts = finalModelId.split('/')
+      actualModelId = parts.length > 1 ? parts[1] : finalModelId
+    }
+
     return {
-      apiKey: openrouterConfig[0].apiKey,
-      baseUrl: openrouterConfig[0].baseUrl || 'https://openrouter.ai/api/v1',
-      model: finalModelId,
+      apiKey: providerConfig[0].apiKey,
+      baseUrl: providerConfig[0].baseUrl || getDefaultBaseUrl(providerId),
+      model: actualModelId,
+      messageFormat: providerConfig[0].messageFormat as 'openai' | 'anthropic' || 'openai',
     }
   }
 
-  throw new Error(
-    'OpenRouter 未配置。请在设置页面配置 OpenRouter API Key'
-  )
+  throw new Error(`厂商 "${providerId}" 未配置或未启用（模型 ID: ${finalModelId}）。请在设置页面配置该厂商的 API Key`)
 }
 
 /**
@@ -212,6 +213,7 @@ export async function getAIConfig(
  */
 function getDefaultBaseUrl(providerId: string): string {
   const baseUrls: Record<string, string> = {
+    'openrouter': 'https://openrouter.ai/api/v1',
     'openai': 'https://api.openai.com/v1',
     'google': 'https://generativelanguage.googleapis.com/v1',
     'deepseek': 'https://api.deepseek.com/v1',
@@ -285,4 +287,23 @@ export async function getAIApiKey(
   }
 
   throw new Error('未配置 AI API Key。请在设置页面配置')
+}
+
+/**
+ * 根据 AI 配置创建对应的 AI 客户端
+ * 自动处理不同厂商的消息格式
+ */
+export function createAIClientFromConfig(config: AIConfig) {
+  const { createAIClient } = require('./client')
+  
+  // 根据消息格式和 baseUrl 判断厂商类型
+  const messageFormat = config.messageFormat || 'openai'
+  
+  return createAIClient({
+    provider: 'custom',
+    apiKey: config.apiKey,
+    model: config.model,
+    baseURL: config.baseUrl,
+    messageFormat,
+  })
 }

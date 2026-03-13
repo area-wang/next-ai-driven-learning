@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDbClient } from '@/lib/db-connection'
 import { flashcards, knowledgeContents } from '@/db/schema'
 import { eq, and } from 'drizzle-orm'
-import { OpenAIClient } from '@/lib/ai/client'
+import { OpenAIClient, type AIClient } from '@/lib/ai/client'
 import { getUserIdOrDemo } from '@/lib/auth/get-user'
-import { getAIConfig } from '@/lib/ai/get-ai-config'
+import { getAIConfig, createAIClientFromConfig } from '@/lib/ai/get-ai-config'
 
 /**
  * POST /api/flashcards/generate
@@ -103,15 +103,12 @@ export async function POST(request: NextRequest) {
       hasApiKey: !!config.apiKey,
       baseUrl: config.baseUrl,
       model: config.model,
+      messageFormat: config.messageFormat,
     })
 
     console.log('创建 AI 客户端...')
     // 创建 AI 客户端
-    const aiClient = new OpenAIClient(
-      config.apiKey,
-      config.model,
-      config.baseUrl
-    )
+    const aiClient = createAIClientFromConfig(config)
 
     // 提取纯文本内容（移除 HTML 标签）
     const plainText = content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
@@ -149,7 +146,6 @@ ${plainText.substring(0, 3000)}
     const response = await aiClient.chat({
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.7,
-      maxTokens: 100000,
     })
     
     console.log('AI 响应长度:', response?.length)

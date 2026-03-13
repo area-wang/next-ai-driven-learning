@@ -8,8 +8,8 @@ import { getDbClient } from '@/lib/db-connection'
 import { knowledgeContents } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { getCurrentUserId } from '@/lib/auth/get-user'
-import { getAIConfig } from '@/lib/ai/get-ai-config'
-import { OpenAIClient } from '@/lib/ai/client'
+import { getAIConfig, createAIClientFromConfig } from '@/lib/ai/get-ai-config'
+import { type AIClient } from '@/lib/ai/client'
 
 export const runtime = 'nodejs'
 
@@ -84,11 +84,7 @@ export async function POST(request: NextRequest) {
 
     // 获取 AI 配置
     const config = await getAIConfig(request as unknown as Request, userId, modelId)
-    const aiClient = new OpenAIClient(
-      config.apiKey,
-      config.model,
-      config.baseUrl
-    )
+    const aiClient = createAIClientFromConfig(config)
 
     // 生成结构化摘要
     const summaryPrompt = `请为以下文档生成一个结构化的摘要，以 JSON 格式返回：
@@ -142,7 +138,6 @@ ${plainText.substring(0, 8000)}
         },
       ],
       temperature: 0.3,
-      maxTokens: 2000,
     })
 
     // 解析 JSON 响应

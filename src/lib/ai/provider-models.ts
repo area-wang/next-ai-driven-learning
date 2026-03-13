@@ -191,6 +191,24 @@ const PROVIDER_API_CONFIG: Record<string, {
       }))
     },
   },
+
+  // OpenRouter
+  // API 文档: https://openrouter.ai/docs#models
+  openrouter: {
+    listModelsUrl: 'https://openrouter.ai/api/v1/models',
+    headers: (apiKey: string) => ({
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    }),
+    parseResponse: (data: any) => {
+      if (!data.data || !Array.isArray(data.data)) return []
+      return data.data.map((model: any) => ({
+        id: model.id, // OpenRouter 返回的格式：provider/model
+        name: model.name || model.id,
+        contextLength: model.context_length || 8000,
+      }))
+    },
+  },
 }
 
 /**

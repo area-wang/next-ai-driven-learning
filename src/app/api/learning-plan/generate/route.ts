@@ -6,8 +6,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDbClient } from '@/lib/db-connection'
 import { learningPlans } from '@/db/schema'
-import { getAIConfig } from '@/lib/ai/get-ai-config'
-import { OpenAIClient } from '@/lib/ai/client'
+import { getAIConfig, createAIClientFromConfig } from '@/lib/ai/get-ai-config'
+import { type AIClient } from '@/lib/ai/client'
 import { generateLearningPlanPrompt, type LearningPlanInput } from '@/lib/ai/prompts'
 import { getCurrentUserId } from '@/lib/auth/get-user'
 import { performSearch, extractSearchQuery } from '@/lib/search/utils'
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
 
     // 获取 AI 配置
     const config = await getAIConfig(request as unknown as Request, currentUserId, modelId)
-    const aiClient = new OpenAIClient(config.apiKey, config.model, config.baseUrl)
+    const aiClient = createAIClientFromConfig(config)
 
     // 生成提示词
     const input: LearningPlanInput = {
@@ -118,7 +118,6 @@ export async function POST(request: NextRequest) {
         },
       ],
       temperature: 0.7,
-      maxTokens: 100000,
     })
 
     // 解析 AI 响应

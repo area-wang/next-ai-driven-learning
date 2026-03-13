@@ -5,8 +5,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { getAIConfig } from '@/lib/ai/get-ai-config'
-import { OpenAIClient } from '@/lib/ai/client'
+import { getAIConfig, createAIClientFromConfig } from '@/lib/ai/get-ai-config'
+import { type AIClient } from '@/lib/ai/client'
 
 interface GenerateSimilarRequest {
   originalQuestion: {
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
 
     // 获取 AI 配置
     const config = await getAIConfig(request as unknown as Request, session.user.id, modelId)
-    const aiClient = new OpenAIClient(config.apiKey, config.model, config.baseUrl)
+    const aiClient = createAIClientFromConfig(config)
 
     const typeMap: Record<string, string> = {
       choice: '选择题',

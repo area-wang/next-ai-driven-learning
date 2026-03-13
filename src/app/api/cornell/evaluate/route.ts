@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getUserIdOrDemo } from '@/lib/auth/get-user'
-import { getAIConfig } from '@/lib/ai/get-ai-config'
-import { OpenAIClient } from '@/lib/ai/client'
+import { getAIConfig, createAIClientFromConfig } from '@/lib/ai/get-ai-config'
+import { type AIClient } from '@/lib/ai/client'
 
 /**
  * POST /api/cornell/evaluate - AI 评估康奈尔笔记质量
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
 
     // 获取 AI 配置
     const config = await getAIConfig(request as unknown as Request, userId, modelId)
-    const aiClient = new OpenAIClient(config.apiKey, config.model, config.baseUrl)
+    const aiClient = createAIClientFromConfig(config)
 
     const prompt = `请评估以下康奈尔笔记的质量，并给出改进建议：
 
@@ -59,7 +59,6 @@ ${summary}
     const response = await aiClient.chat({
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.7,
-      maxTokens: 100000,
     })
 
     // 尝试解析 JSON

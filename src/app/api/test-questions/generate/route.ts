@@ -5,9 +5,9 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { generateTestQuestionsPrompt, type TestQuestionsInput } from '@/lib/ai/prompts'
-import { type AIClient, OpenAIClient } from '@/lib/ai/client'
+import { type AIClient } from '@/lib/ai/client'
 import { getUserIdOrDemo } from '@/lib/auth/get-user'
-import { getAIConfig } from '@/lib/ai/get-ai-config'
+import { getAIConfig, createAIClientFromConfig } from '@/lib/ai/get-ai-config'
 import { performSearch } from '@/lib/search/utils'
 import { getSearchConfig } from '@/lib/search/get-search-config'
 
@@ -134,13 +134,10 @@ export async function POST(request: NextRequest) {
         hasApiKey: !!config.apiKey,
         baseUrl: config.baseUrl,
         model: config.model,
+        messageFormat: config.messageFormat,
       })
 
-      aiClient = new OpenAIClient(
-        config.apiKey,
-        config.model,
-        config.baseUrl
-      )
+      aiClient = createAIClientFromConfig(config)
     } catch (configError) {
       console.error('[API] Failed to get AI config:', configError)
       return NextResponse.json(
@@ -181,7 +178,6 @@ export async function POST(request: NextRequest) {
           },
         ],
         temperature: 0.3,
-        maxTokens: 100000,
       })
       console.log('[API] AI response received, length:', response.length)
       console.log('[API] AI response preview:', response.slice(0, 200))
